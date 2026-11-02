@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+    <head th:replace="~{layout :: head('好友')}">
+    </head>
+    <body>
+        <nav th:replace="~{layout :: nav}">
+        </nav>
+        <main>
+            <h1>
+                好友
+            </h1>
+            <form th:action="@{/friends/request}" method="post">
+                <label>用户名 <input name="username" required></label>
+                <button>发送好友申请</button>
+            </form>
+            <ul>
+                <li th:each="f : ${friendships}">
+                    <span th:text="${f.lowUser.id == currentUser.id ? f.highUser.username : f.lowUser.username}"></span>　<span th:text="${f.status.name() == 'ACCEPTED' ? '已是好友' : (f.requester.id == currentUser.id ? '等待对方接受' : '收到申请')}"></span>
+                    <form th:if="${f.status.name() == 'PENDING' and f.requester.id != currentUser.id}" th:action="@{/friends/{id}/accept(id=${f.id})}" method="post">
+                        <button>接受申请</button>
+                    </form>
+                </li>
+            </ul>
+        </main>
+    </body>
+</html>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+    <head th:replace="~{layout :: head('登录')}">
+    </head>
+    <body>
+        <main>
+            <h1>
+                奥拉星资源站
+            </h1>
+            <h2>
+                登录
+            </h2>
+            <p th:if="${param.error}">
+                用户名、密码或管理员验证码错误。
+            </p>
+            <p th:if="${param.registered}">
+                注册成功，请登录。
+            </p>
+            <p th:if="${param.logout}">
+                已退出。
+            </p>
+            <form th:action="@{/login}" method="post">
+                <label>用户名 <input name="username" required autocomplete="username"></label>
+                <label>密码 <input type="password" name="password" required autocomplete="current-password"></label>
+                <label>管理员验证码（仅管理员登录需要）<input name="verificationCode" autocomplete="off"></label>
+                <button>登录</button>
+            </form>
+            <a th:href="@{/register}">注册个人账号</a>
+        </main>
+    </body>
+</html>

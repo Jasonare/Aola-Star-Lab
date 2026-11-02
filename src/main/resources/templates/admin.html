@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+    <head th:replace="~{layout :: head('管理')}">
+    </head>
+    <body>
+        <nav th:replace="~{layout :: nav}">
+        </nav>
+        <main>
+            <h1>
+                管理中心
+            </h1>
+            <section>
+                <h2>
+                    待审核
+                </h2>
+                <p th:if="${#lists.isEmpty(pending)}">
+                    暂无待审核内容。
+                </p>
+                <article th:each="p : ${pending}">
+                    <h3>
+                        <a th:href="@{/posts/{id}(id=${p.id})}" th:text="${p.title}"></a>
+                    </h3>
+                    <p>
+                        <span th:text="${p.kind}"></span> · <span th:text="${p.author.username}"></span>
+                    </p>
+                    <form th:action="@{/admin/review/{id}(id=${p.id})}" method="post">
+                        <button name="approve" value="true">通过</button>
+                    </form>
+                    <form th:action="@{/admin/review/{id}(id=${p.id})}" method="post">
+                        <label>驳回原因 <input name="reason" maxlength="500" required></label>
+                        <button name="approve" value="false">驳回</button>
+                    </form>
+                </article>
+            </section>
+            <section>
+                <h2>
+                    标签管理
+                </h2>
+                <form th:action="@{/admin/tags}" method="post">
+                    <input name="name" maxlength="40" required><button>添加标签</button>
+                </form>
+                <ul>
+                    <li th:each="tag : ${tags}">
+                        <span th:text="${tag.name}"></span>
+                        <form th:action="@{/admin/tags/{id}/delete(id=${tag.id})}" method="post">
+                            <button>删除标签</button>
+                        </form>
+                    </li>
+                </ul>
+            </section>
+            <section>
+                <h2>
+                    资源目录管理
+                </h2>
+                <form th:action="@{/admin/folders}" method="post">
+                    <input name="name" maxlength="100" required><button>新建目录</button>
+                </form>
+                <ul>
+                    <li th:each="folder : ${folders}" th:text="${folder.name}">
+                    </li>
+                </ul>
+                <a th:href="@{/resources}">管理资源文件</a>
+            </section>
+        </main>
+    </body>
+</html>

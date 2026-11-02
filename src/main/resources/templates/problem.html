@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+    <head th:replace="~{layout :: head('请求无效')}">
+    </head>
+    <body>
+        <nav th:replace="~{layout :: nav}">
+        </nav>
+        <main>
+            <h1>
+                请求无效
+            </h1>
+            <p th:text="${message}">
+            </p>
+            <a href="javascript:history.back()">返回</a>
+        </main>
+    </body>
+</html>

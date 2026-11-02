@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+    <head th:replace="~{layout :: head('个人仪表盘')}">
+    </head>
+    <body>
+        <nav th:replace="~{layout :: nav}">
+        </nav>
+        <main>
+            <h1>
+                个人仪表盘
+            </h1>
+            <p>
+                欢迎回来，<span th:text="${currentUser.username}"></span>
+            </p>
+            <section>
+                <h2>
+                    我的内容
+                </h2>
+                <p>
+                    博客 <strong th:text="${blogCount}"></strong>　视频 <strong th:text="${videoCount}"></strong>
+                </p>
+                <a th:href="@{/posts/new(kind='BLOG')}">发布博客</a> <a th:href="@{/posts/new(kind='VIDEO')}">发布视频</a>
+            </section>
+            <section>
+                <h2>
+                    最近评论
+                </h2>
+                <ul>
+                    <li th:each="c : ${recentComments}">
+                        <a th:href="@{/posts/{id}(id=${c.post.id})}" th:text="${c.post.title}"></a>　<span th:text="${c.author.username}"></span>：<span th:text="${c.body}"></span>
+                    </li>
+                </ul>
+                <p th:if="${#lists.isEmpty(recentComments)}">
+                    暂无评论
+                </p>
+            </section>
+            <section>
+                <h2>
+                    最近五次登录
+                </h2>
+                <ul>
+                    <li th:each="log : ${logs}" th:text="${#temporals.format(log.loggedAt, 'yyyy-MM-dd HH:mm:ss')}">
+                    </li>
+                </ul>
+            </section>
+        </main>
+    </body>
+</html>

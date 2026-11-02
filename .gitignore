@@ -1,0 +1,4 @@
+/target/
+/data/
+/apache-maven-3.6.1/repo/
+/config/mysql-local.yml

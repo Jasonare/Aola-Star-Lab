@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+    <head th:replace="~{layout :: head('博客与视频')}">
+    </head>
+    <body>
+        <nav th:replace="~{layout :: nav}">
+        </nav>
+        <main>
+            <h1>
+                博客与视频
+            </h1>
+            <p>
+                <a th:href="@{/posts/new(kind='BLOG')}">发布博客</a> <a th:href="@{/posts/new(kind='VIDEO')}">发布视频</a>
+            </p>
+            <form th:action="@{/posts}" method="get">
+                <label>搜索 <input name="q" th:value="${query}"></label>
+                <label>标签 <select name="tag"><option value="">全部</option><option th:each="tag : ${tags}" th:value="${tag.id}" th:text="${tag.name}" th:selected="${selectedTag == tag.id}"></option></select></label>
+                <label>类型 <select name="kind"><option value="">全部</option><option value="BLOG" th:selected="${selectedKind != null and selectedKind.name() == 'BLOG'}">博客</option><option value="VIDEO" th:selected="${selectedKind != null and selectedKind.name() == 'VIDEO'}">视频</option></select></label>
+                <button>搜索</button>
+            </form>
+            <ul>
+                <li th:each="p : ${posts}">
+                    <a th:href="@{/posts/{id}(id=${p.id})}" th:text="${p.title}"></a> <span th:text="${p.kind.name() == 'BLOG' ? '博客' : '视频'}"></span> · <span th:text="${p.author.username}"></span> · <span th:text="${p.review}"></span> <span th:each="tag : ${p.tags}" th:text="${tag.name}"></span>
+                </li>
+            </ul>
+            <p th:if="${#lists.isEmpty(posts)}">
+                没有符合条件的内容。
+            </p>
+        </main>
+    </body>
+</html>

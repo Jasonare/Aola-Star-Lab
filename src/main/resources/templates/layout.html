@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+    <head th:fragment="head(title)">
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title th:text="${title} + ' - 奥拉星资源站'">
+            奥拉星资源站
+        </title>
+        <link rel="stylesheet" th:href="@{/css/app.css}">
+    </head>
+    <body>
+        <nav th:fragment="nav">
+            <a th:href="@{/}">奥拉星资源站</a> <a th:href="@{/posts}">博客与视频</a> <a th:href="@{/friends}">好友</a> <a th:href="@{/resources}">资源目录</a> <a th:if="${currentUser != null and currentUser.admin}" th:href="@{/admin}">管理</a><span th:if="${currentUser != null}" th:text="${currentUser.username}"></span>
+            <form th:if="${currentUser != null}" th:action="@{/logout}" method="post">
+                <button>退出</button>
+            </form>
+        </nav>
+    </body>
+</html>

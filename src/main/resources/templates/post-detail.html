@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+    <head th:replace="~{layout :: head(${post.title})}">
+    </head>
+    <body>
+        <nav th:replace="~{layout :: nav}">
+        </nav>
+        <main>
+            <article>
+                <h1 th:text="${post.title}">
+                </h1>
+                <p>
+                    作者：<span th:text="${post.author.username}"></span>　审核：<span th:text="${post.review}"></span>　可见范围：<span th:text="${post.visibility}"></span>
+                </p>
+                <p th:if="${post.review.name() == 'REJECTED'}">
+                    驳回原因：<span th:text="${post.rejectionReason}"></span>
+                </p>
+                <p>
+                    <span th:each="tag : ${post.tags}" th:text="${tag.name} + ' '"></span>
+                </p>
+                <p style="white-space: pre-wrap" th:text="${post.body}">
+                </p>
+                <img th:if="${post.fileKey != null and post.kind.name() == 'BLOG'}" th:src="@{/posts/{id}/file(id=${post.id})}" alt="博客图片"><video th:if="${post.fileKey != null and post.kind.name() == 'VIDEO'}" controls preload="metadata" th:src="@{/posts/{id}/file(id=${post.id})}"></video>
+                <p th:if="${post.author.id == currentUser.id}">
+                    <a th:href="@{/posts/{id}/edit(id=${post.id})}">修改并重新提交</a>
+                </p>
+            </article>
+            <section th:if="${post.kind.name() == 'BLOG' and post.review.name() == 'APPROVED'}">
+                <h2>
+                    评论
+                </h2>
+                <ul>
+                    <li th:each="c : ${comments}">
+                        <span th:text="${c.author.username}"></span>：<span th:text="${c.body}"></span>
+                    </li>
+                </ul>
+                <form th:action="@{/posts/{id}/comments(id=${post.id})}" method="post">
+                    <textarea name="body" maxlength="1000" required></textarea>
+                    <button>评论</button>
+                </form>
+            </section>
+        </main>
+    </body>
+</html>

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+    <head th:replace="~{layout :: head('编辑内容')}">
+    </head>
+    <body>
+        <nav th:replace="~{layout :: nav}">
+        </nav>
+        <main>
+            <h1 th:text="${post.kind.name() == 'BLOG' ? '编辑博客' : '编辑视频'}">
+            </h1>
+            <p>
+                保存后需要重新审核。博客支持一张图片；视频支持 MP4。
+            </p>
+            <form th:action="@{/posts/save(_csrf=${_csrf.token})}" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="id" th:value="${post.id}"><input type="hidden" name="kind" th:value="${post.kind}">
+                <label>标题 <input name="title" maxlength="150" required th:value="${post.title}"></label>
+                <label>文案 <textarea name="body" maxlength="10000" th:text="${post.body}"></textarea></label>
+                <label>可见范围 <select name="visibility"><option th:each="v : ${T(com.aola.lab.Model.Visibility).values()}" th:value="${v}" th:text="${v.name() == 'PUBLIC' ? '公开' : (v.name() == 'FRIENDS' ? '仅好友' : '仅自己')}" th:selected="${post.visibility == v}"></option></select></label>
+                <fieldset>
+                    <legend>
+                        标签
+                    </legend>
+                    <label th:each="tag : ${tags}"><input type="checkbox" name="tagIds" th:value="${tag.id}" th:checked="${selectedTagIds.contains(tag.id)}"><span th:text="${tag.name}"></span></label>
+                </fieldset>
+                <label th:text="${post.kind.name() == 'BLOG' ? '图片（PNG、JPEG、WebP）' : '视频（MP4）'}"></label>
+                <input type="file" name="file" th:accept="${post.kind.name() == 'BLOG' ? 'image/png,image/jpeg,image/webp' : 'video/mp4'}">
+                <p th:if="${post.fileKey != null}">
+                    留空则保留现有文件。
+                </p>
+                <button>提交审核</button>
+            </form>
+        </main>
+    </body>
+</html>

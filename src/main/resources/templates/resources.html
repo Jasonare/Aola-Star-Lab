@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+    <head th:replace="~{layout :: head('资源目录')}">
+    </head>
+    <body>
+        <nav th:replace="~{layout :: nav}">
+        </nav>
+        <main>
+            <h1>
+                资源目录
+            </h1>
+            <p>
+                文件仅通过授权链接下载。
+            </p>
+            <section th:each="folder : ${folders}">
+                <h2 th:text="${folder.name}">
+                </h2>
+                <ul>
+                    <li th:each="item : ${items}" th:if="${item.folder.id == folder.id}">
+                        <a th:href="@{/resources/{id}/file(id=${item.id})}" th:text="${item.name}"></a><span th:if="${currentUser.admin}" th:text="${item.visible ? '（可见）' : '（隐藏）'}"></span>
+                        <form th:if="${currentUser.admin}" th:action="@{/admin/resources/{id}/visibility(id=${item.id})}" method="post">
+                            <button th:text="${item.visible ? '隐藏' : '设为可见'}"></button>
+                        </form>
+                    </li>
+                </ul>
+            </section>
+            <section th:if="${currentUser.admin}">
+                <h2>
+                    上传资源
+                </h2>
+                <p>
+                    支持 PNG、JPEG、WebP、MP4、PDF、ZIP、EXE 和 APK，最大 100MB。
+                </p>
+                <form th:action="@{/admin/resources(_csrf=${_csrf.token})}" method="post" enctype="multipart/form-data">
+                    <label>目录 <select name="folderId" required><option th:each="folder : ${folders}" th:value="${folder.id}" th:text="${folder.name}"></option></select></label>
+                    <input type="file" name="file" required>
+                    <label><input type="checkbox" name="visible" value="true">对用户可见</label>
+                    <button>上传</button>
+                </form>
+            </section>
+        </main>
+    </body>
+</html>
