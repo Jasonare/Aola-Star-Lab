@@ -13,18 +13,15 @@
                 欢迎回来，<span th:text="${currentUser.username}"></span>
             </p>
             <section>
-                <h2>
-                    我的内容
-                </h2>
-                <p>
-                    博客 <strong th:text="${blogCount}"></strong>　视频 <strong th:text="${videoCount}"></strong>
-                </p>
-                <a th:href="@{/posts/new(kind='BLOG')}">发布博客</a> <a th:href="@{/posts/new(kind='VIDEO')}">发布视频</a>
+                <div class="section-header"><h2>我的内容</h2><span class="badge">持续更新</span></div>
+                <div class="stats-grid">
+                    <div class="stat-card"><span class="stat-label">博客</span><strong class="stat-number" th:text="${blogCount}"></strong></div>
+                    <div class="stat-card"><span class="stat-label">视频</span><strong class="stat-number" th:text="${videoCount}"></strong></div>
+                </div>
+                <div class="actions" style="margin-top: 1rem"><a class="btn" th:href="@{/posts/new(kind='BLOG')}">发布博客</a><a class="btn btn-secondary" th:href="@{/posts/new(kind='VIDEO')}">发布视频</a></div>
             </section>
             <section>
-                <h2>
-                    最近评论
-                </h2>
+                <div class="section-header"><h2>最近评论</h2><span class="muted">来自内容库的最新回应</span></div>
                 <ul>
                     <li th:each="c : ${recentComments}">
                         <a th:href="@{/posts/{id}(id=${c.post.id})}" th:text="${c.post.title}"></a>　<span th:text="${c.author.username}"></span>：<span th:text="${c.body}"></span>
@@ -35,9 +32,7 @@
                 </p>
             </section>
             <section>
-                <h2>
-                    最近五次登录
-                </h2>
+                <div class="section-header"><h2>最近五次登录</h2><span class="muted">账号活动</span></div>
                 <ul>
                     <li th:each="log : ${logs}" th:text="${#temporals.format(log.loggedAt, 'yyyy-MM-dd HH:mm:ss')}">
                     </li>

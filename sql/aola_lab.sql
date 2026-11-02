@@ -1,5 +1,6 @@
 -- MySQL 8.0; execute only against the intended server and database.
 -- Existing databases are not altered. Existing tables cause an error.
+-- For existing databases, run upgrade_post_comments.sql before deploying the updated application.
 CREATE DATABASE IF NOT EXISTS `aola_lab`
     CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 USE `aola_lab`;
@@ -23,8 +24,10 @@ CREATE TABLE `tags` (
 CREATE TABLE `resource_folders` (
     `id` BIGINT NOT NULL AUTO_INCREMENT,
     `name` VARCHAR(100) NOT NULL,
+    `parent_id` BIGINT,
     PRIMARY KEY (`id`),
-    CONSTRAINT `UKow2afpj56aiedja4wics9k6gk` UNIQUE (`name`)
+    CONSTRAINT `UKow2afpj56aiedja4wics9k6gk` UNIQUE (`name`),
+    CONSTRAINT `FK_folder_parent` FOREIGN KEY (`parent_id`) REFERENCES `resource_folders` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 CREATE TABLE `login_log` (
@@ -60,6 +63,7 @@ CREATE TABLE `posts` (
     `file_key` VARCHAR(100),
     `file_type` VARCHAR(100),
     `created_at` DATETIME(6) NOT NULL,
+    `updated_at` DATETIME(6) NOT NULL,
     PRIMARY KEY (`id`),
     CONSTRAINT `FK59ytrjv3ku2g82tyk9sou5lnr` FOREIGN KEY (`author_id`) REFERENCES `app_users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
@@ -77,10 +81,12 @@ CREATE TABLE `comments` (
     `post_id` BIGINT NOT NULL,
     `author_id` BIGINT NOT NULL,
     `body` VARCHAR(1000) NOT NULL,
+    `parent_id` BIGINT,
     `created_at` DATETIME(6) NOT NULL,
     PRIMARY KEY (`id`),
     CONSTRAINT `FKh4c7lvsc298whoyd4w9ta25cr` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`),
-    CONSTRAINT `FKh1svnilxctesxuj1ycundagfj` FOREIGN KEY (`author_id`) REFERENCES `app_users` (`id`)
+    CONSTRAINT `FKh1svnilxctesxuj1ycundagfj` FOREIGN KEY (`author_id`) REFERENCES `app_users` (`id`),
+    CONSTRAINT `FK_comment_parent` FOREIGN KEY (`parent_id`) REFERENCES `comments` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 CREATE TABLE `resources` (

@@ -3,17 +3,31 @@
     <head th:fragment="head(title)">
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title th:text="${title} + ' - 奥拉星资源站'">
-            奥拉星资源站
-        </title>
+        <title th:text="${title} + ' · 奥拉星实验室'">奥拉星实验室</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
         <link rel="stylesheet" th:href="@{/css/app.css}">
     </head>
     <body>
-        <nav th:fragment="nav">
-            <a th:href="@{/}">奥拉星资源站</a> <a th:href="@{/posts}">博客与视频</a> <a th:href="@{/friends}">好友</a> <a th:href="@{/resources}">资源目录</a> <a th:if="${currentUser != null and currentUser.admin}" th:href="@{/admin}">管理</a><span th:if="${currentUser != null}" th:text="${currentUser.username}"></span>
-            <form th:if="${currentUser != null}" th:action="@{/logout}" method="post">
-                <button>退出</button>
-            </form>
-        </nav>
+        <header class="site-header" th:fragment="nav">
+            <div class="container header-inner">
+                <a class="brand" th:href="@{/}">
+                    <span class="brand-mark">✦</span>
+                    <span><strong>奥拉星</strong><small>实验室</small></span>
+                </a>
+                <nav class="primary-nav" aria-label="主导航">
+                    <a th:href="@{/}">工作台</a>
+                    <a th:href="@{/posts}">内容库</a>
+                    <a th:href="@{/friends}">伙伴</a>
+                    <a th:href="@{/resources}">资源柜</a>
+                    <a th:if="${currentUser != null and currentUser.admin}" th:href="@{/admin}">审核台</a>
+                </nav>
+                <div class="account-area" th:if="${currentUser != null}">
+                    <span class="user-chip"><span class="user-dot"></span><span th:text="${currentUser.username}"></span></span>
+                    <form th:action="@{/logout}" method="post"><button class="btn-ghost">退出</button></form>
+                </div>
+            </div>
+        </header>
     </body>
 </html>
