@@ -134,13 +134,14 @@ class ApplicationTest {
                 .andExpect(header().string("Location", "/"))
                 .andReturn();
 
-        var session = (org.springframework.mock.web.MockHttpSession) loginResult.getRequest().getSession(false);
+        org.springframework.mock.web.MockHttpSession session =
+                (org.springframework.mock.web.MockHttpSession) loginResult.getRequest().getSession(false);
         assertThat(session.getAttribute("showLoginWelcome")).isEqualTo(true);
         mvc.perform(get("/").session(session))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
                         "这里是Aola Star Lab，是一个奥拉星怀旧社区网站，目前包括发布文章、发布视频、资源下载等功能，后续会持续更新，感谢大家的支持！开发者：Jasonare")));
-        mvc.perform(get("/").session((jakarta.servlet.http.HttpSession) session))
+        mvc.perform(get("/").session(session))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("alert(\"这里是Aola Star Lab"))));
@@ -334,7 +335,7 @@ class ApplicationTest {
         mvc.perform(get("/posts").with(user("other").roles("USER")).param("q", "奥拉星"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("奥拉星新篇")));
-        MockMultipartFile video = new MockMultipartFile("file", "demo.mp4", "video/mp4",
+        MockMultipartFile video = new MockMultipartFile("files", "demo.mp4", "video/mp4",
                 new byte[]{0, 0, 0, 16, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm'});
         mvc.perform(multipart("/posts/save").file(video).with(user("author").roles("USER")).with(csrf())
                 .param("kind", "VIDEO").param("title", "视频").param("visibility", "FRIENDS"))
