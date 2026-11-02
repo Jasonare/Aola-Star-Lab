@@ -2,6 +2,7 @@ package com.aola.lab;
 
 import java.util.List;
 import java.util.Optional;
+import java.time.LocalDateTime;
 
 import com.aola.lab.Model.Comment;
 import com.aola.lab.Model.Folder;
@@ -36,22 +37,45 @@ public class Repositories {
     }
 
     public interface Posts extends JpaRepository<Post, Long> {
-        List<Post> findAllByOrderByCreatedAtDesc();
+        List<Post> findAllByOrderByUpdatedAtDesc();
+
+        List<Post> findByUpdatedAtGreaterThanEqualAndUpdatedAtLessThanOrderByUpdatedAtDesc(
+                LocalDateTime from, LocalDateTime until);
+
+        List<Post> findByUpdatedAtGreaterThanEqualOrderByUpdatedAtDesc(LocalDateTime from);
+
+        List<Post> findByUpdatedAtLessThanOrderByUpdatedAtDesc(LocalDateTime until);
+
+        List<Post> findByAuthorAndKindOrderByUpdatedAtDesc(User user, Kind kind);
 
         long countByAuthorAndKind(User user, Kind kind);
     }
 
     public interface Comments extends JpaRepository<Comment, Long> {
-        List<Comment> findByPostOrderByCreatedAtDesc(Post post);
+        List<Comment> findByPostAndParentIsNullOrderByCreatedAtDesc(Post post);
+
+        List<Comment> findByParentOrderByCreatedAtAsc(Comment parent);
 
         List<Comment> findTop5ByPostAuthorOrderByCreatedAtDesc(User author);
     }
 
     public interface Folders extends JpaRepository<Folder, Long> {
         boolean existsByName(String name);
+
+        boolean existsByNameAndIdNot(String name, Long id);
+
+        List<Folder> findByParentIsNullOrderByNameAsc();
+
+        List<Folder> findByParentOrderByNameAsc(Folder parent);
+
+        List<Folder> findByParentIsNullOrParentOrderByNameAsc(Folder parent);
+
+        boolean existsByParent(Folder parent);
     }
 
     public interface Resources extends JpaRepository<ResourceFile, Long> {
         List<ResourceFile> findByVisibleTrue();
+
+        boolean existsByFolder(Folder folder);
     }
 }

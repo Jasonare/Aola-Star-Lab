@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+    <head th:replace="~{layout :: head('个人作品')}"></head>
+    <body>
+        <nav th:replace="~{layout :: nav}"></nav>
+        <main>
+            <div class="page-heading"><div><p class="eyebrow">创作管理</p><h1>个人作品</h1><p class="muted">管理你发布的文章和视频。</p></div><div class="actions"><a class="btn" th:href="@{/posts/new(kind=${selectedKind})}"><i class="fa fa-plus"></i> <span th:text="${selectedKind.name() == 'VIDEO' ? '发布视频' : '发布文章'}"></span></a></div></div>
+            <div class="works-tabs" role="tablist">
+                <a class="works-tab" th:classappend="${selectedKind.name() == 'BLOG' ? ' active' : ''}" th:href="@{/works(kind='BLOG')}"><i class="fa fa-file-text-o"></i> 我的文章</a>
+                <a class="works-tab" th:classappend="${selectedKind.name() == 'VIDEO' ? ' active' : ''}" th:href="@{/works(kind='VIDEO')}"><i class="fa fa-video-camera"></i> 我的视频</a>
+            </div>
+            <section class="list-panel">
+                <div class="section-header"><h2 th:text="${selectedKind.name() == 'BLOG' ? '我的文章' : '我的视频'}"></h2><span class="muted" th:text="${#lists.size(works)} + ' 项'">0 项</span></div>
+                <div class="my-content-list">
+                    <article class="work-row" th:each="p : ${works}">
+                        <div class="post-kind" th:text="${selectedKind.name() == 'BLOG' ? '文' : '影'}"></div>
+                        <div class="work-copy"><a class="post-title" th:href="@{/posts/{id}(id=${p.id})}" th:text="${p.title}"></a><p class="work-preview" th:if="${selectedKind.name() == 'BLOG'}" th:text="${#strings.length(p.body == null ? '' : p.body) > 20 ? #strings.substring(p.body, 0, 20) + '…' : (p.body == null ? '' : p.body)}"></p><p class="post-list-meta" th:text="${postDates[p.id]}"></p><span class="status-pill" th:classappend="${p.review.name() == 'PENDING' ? 'status-pending' : (p.review.name() == 'REJECTED' ? 'status-rejected' : 'status-approved')}" th:text="${p.review.name() == 'PENDING' ? '待审核' : (p.review.name() == 'REJECTED' ? '驳回' : '已发布')}"></span></div>
+                        <div class="work-actions"><a class="icon-action" th:href="@{/posts/{id}(id=${p.id})}" title="预览全文" aria-label="预览全文"><i class="fa fa-eye" aria-hidden="true"></i></a><a class="icon-action" th:href="@{/posts/{id}/edit(id=${p.id})}" title="编辑作品" aria-label="编辑作品"><i class="fa fa-pencil" aria-hidden="true"></i></a><form th:action="@{/posts/{id}/delete(id=${p.id})}" method="post" onsubmit="return confirm('确认删除这项作品？')"><button type="submit" class="icon-action danger-action" title="删除作品" aria-label="删除作品"><i class="fa fa-trash-o" aria-hidden="true"></i></button></form></div>
+                    </article>
+                    <div class="empty" th:if="${#lists.isEmpty(works)}" th:text="${selectedKind.name() == 'BLOG' ? '还没有发布文章。' : '还没有发布视频。'}"></div>
+                </div>
+            </section>
+        </main>
+    </body>
+</html>

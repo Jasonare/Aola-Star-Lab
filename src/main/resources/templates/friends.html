@@ -1,26 +1,12 @@
 <!DOCTYPE html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
-    <head th:replace="~{layout :: head('好友')}">
-    </head>
+    <head th:replace="~{layout :: head('好友')}"></head>
     <body>
-        <nav th:replace="~{layout :: nav}">
-        </nav>
+        <nav th:replace="~{layout :: nav}"></nav>
         <main>
-            <h1>
-                好友
-            </h1>
-            <form th:action="@{/friends/request}" method="post">
-                <label>用户名 <input name="username" required></label>
-                <button>发送好友申请</button>
-            </form>
-            <ul>
-                <li th:each="f : ${friendships}">
-                    <span th:text="${f.lowUser.id == currentUser.id ? f.highUser.username : f.lowUser.username}"></span>　<span th:text="${f.status.name() == 'ACCEPTED' ? '已是好友' : (f.requester.id == currentUser.id ? '等待对方接受' : '收到申请')}"></span>
-                    <form th:if="${f.status.name() == 'PENDING' and f.requester.id != currentUser.id}" th:action="@{/friends/{id}/accept(id=${f.id})}" method="post">
-                        <button>接受申请</button>
-                    </form>
-                </li>
-            </ul>
+            <div class="page-heading"><div><p class="eyebrow">奥拉伙伴</p><h1>奥拉伙伴</h1><p class="muted">连接一起探索奥拉星的伙伴。</p></div></div>
+            <section class="request-panel"><div class="section-header"><h2>添加伙伴</h2></div><form class="inline-form" th:action="@{/friends/request}" method="post"><label>用户名<input name="username" required placeholder="输入对方用户名"></label><button>发送好友申请</button></form></section>
+            <section class="list-panel"><div class="section-header"><h2>我的伙伴</h2><span class="muted" th:text="${#lists.size(friendships)} + ' 条记录'"></span></div><div class="friend-list"><div class="friend-row" th:each="f : ${friendships}"><div class="avatar" th:text="${(f.lowUser.id == currentUser.id ? f.highUser.username : f.lowUser.username).substring(0,1).toUpperCase()}"></div><div class="friend-copy"><strong th:text="${f.lowUser.id == currentUser.id ? f.highUser.username : f.lowUser.username}"></strong><span th:text="${f.status.name() == 'ACCEPTED' ? '已是好友' : (f.requester.id == currentUser.id ? '等待对方接受' : '收到申请')}"></span></div><form th:if="${f.status.name() == 'PENDING' and f.requester.id != currentUser.id}" th:action="@{/friends/{id}/accept(id=${f.id})}" method="post"><button class="btn-sm">接受申请</button></form></div></div><div class="empty" th:if="${#lists.isEmpty(friendships)}">还没有伙伴，先发送一条好友申请吧。</div></section>
         </main>
     </body>
 </html>

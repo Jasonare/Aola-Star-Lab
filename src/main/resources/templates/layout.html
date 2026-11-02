@@ -3,10 +3,11 @@
     <head th:fragment="head(title)">
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title th:text="${title} + ' · 奥拉星实验室'">奥拉星实验室</title>
+        <title th:text="${title} + ' · 奥拉星怀旧社区'">奥拉星怀旧社区</title>
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
         <link rel="stylesheet" th:href="@{/css/app.css}">
     </head>
     <body>
@@ -14,14 +15,16 @@
             <div class="container header-inner">
                 <a class="brand" th:href="@{/}">
                     <span class="brand-mark">✦</span>
-                    <span><strong>奥拉星</strong><small>实验室</small></span>
+                    <span><strong>奥拉星</strong><small>怀旧社区</small></span>
                 </a>
                 <nav class="primary-nav" aria-label="主导航">
                     <a th:href="@{/}">工作台</a>
-                    <a th:href="@{/posts}">内容库</a>
-                    <a th:href="@{/friends}">伙伴</a>
-                    <a th:href="@{/resources}">资源柜</a>
-                    <a th:if="${currentUser != null and currentUser.admin}" th:href="@{/admin}">审核台</a>
+                    <a th:href="@{/posts(kind='BLOG')}">文章专区</a>
+                    <a th:href="@{/posts(kind='VIDEO')}">视频专区</a>
+                    <a th:href="@{/works}">个人作品</a>
+                    <a th:href="@{/friends}">奥拉伙伴</a>
+                    <a th:href="@{/resources}">资源中心</a>
+                    <a th:if="${currentUser != null and currentUser.admin}" th:href="@{/admin}">管理中心</a>
                 </nav>
                 <div class="account-area" th:if="${currentUser != null}">
                     <span class="user-chip"><span class="user-dot"></span><span th:text="${currentUser.username}"></span></span>

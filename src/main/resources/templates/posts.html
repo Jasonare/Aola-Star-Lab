@@ -1,31 +1,23 @@
 <!DOCTYPE html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
-    <head th:replace="~{layout :: head('博客与视频')}">
-    </head>
+    <head th:replace="~{layout :: head('博客与视频')}"></head>
     <body>
-        <nav th:replace="~{layout :: nav}">
-        </nav>
+        <nav th:replace="~{layout :: nav}"></nav>
         <main>
-            <h1>
-                博客与视频
-            </h1>
-            <p>
-                <a th:href="@{/posts/new(kind='BLOG')}">发布博客</a> <a th:href="@{/posts/new(kind='VIDEO')}">发布视频</a>
-            </p>
-            <form th:action="@{/posts}" method="get">
-                <label>搜索 <input name="q" th:value="${query}"></label>
-                <label>标签 <select name="tag"><option value="">全部</option><option th:each="tag : ${tags}" th:value="${tag.id}" th:text="${tag.name}" th:selected="${selectedTag == tag.id}"></option></select></label>
-                <label>类型 <select name="kind"><option value="">全部</option><option value="BLOG" th:selected="${selectedKind != null and selectedKind.name() == 'BLOG'}">博客</option><option value="VIDEO" th:selected="${selectedKind != null and selectedKind.name() == 'VIDEO'}">视频</option></select></label>
-                <button>搜索</button>
+            <div class="page-heading"><div><p class="eyebrow">内容库</p><h1 th:text="${sectionTitle}">内容库</h1><p class="muted">发现实验记录、攻略和视频内容。</p></div><div class="actions"><a class="btn" th:href="@{/posts/new(kind=${selectedKind != null ? selectedKind : 'BLOG'})}" th:text="${selectedKind != null and selectedKind.name() == 'VIDEO' ? '发布视频' : '发布文章'}">发布文章</a></div></div>
+            <form class="filter-bar" th:action="@{/posts}" method="get">
+                <label>搜索<input name="q" th:value="${query}" placeholder="输入标题或关键词"></label>
+                <label>标签<select name="tag"><option value="">全部标签</option><option th:each="tag : ${tags}" th:value="${tag.id}" th:text="${tag.name}" th:selected="${selectedTag == tag.id}"></option></select></label>
+                <input type="hidden" name="kind" th:if="${selectedKind != null}" th:value="${selectedKind.name()}">
+                <label>起始时间<input type="date" name="from" th:value="${fromDate}" th:attr="max=${untilDate}"></label>
+                <label>终止时间<input type="date" name="until" th:value="${untilDate}" th:attr="min=${fromDate}"></label>
+                <button><i class="fa fa-search" aria-hidden="true"></i> 搜索内容</button>
             </form>
-            <ul>
-                <li th:each="p : ${posts}">
-                    <a th:href="@{/posts/{id}(id=${p.id})}" th:text="${p.title}"></a> <span th:text="${p.kind.name() == 'BLOG' ? '博客' : '视频'}"></span> · <span th:text="${p.author.username}"></span> · <span th:text="${p.review}"></span> <span th:each="tag : ${p.tags}" th:text="${tag.name}"></span>
-                </li>
-            </ul>
-            <p th:if="${#lists.isEmpty(posts)}">
-                没有符合条件的内容。
-            </p>
+            <section class="list-panel">
+                <div class="section-header"><h2>最新内容</h2><span class="muted" th:text="${#lists.size(posts)} + ' 条结果'"></span></div>
+                <div class="post-list"><article class="post-row" th:each="p : ${posts}"><div class="post-kind" th:text="${p.kind.name() == 'BLOG' ? '文' : '影'}"></div><div class="post-copy"><a class="post-title" th:href="@{/posts/{id}(id=${p.id})}" th:text="${p.title}"></a><p class="post-list-meta"><span th:text="${p.author.username}"></span><span class="dot-sep">·</span><span th:text="${p.review}"></span><span class="dot-sep">·</span><span th:text="${postDates[p.id]}"></span></p><p class="article-preview" th:if="${p.kind.name() == 'BLOG'}" th:text="${#strings.length(p.body == null ? '' : p.body) > 20 ? #strings.substring(p.body, 0, 20) + '…' : (p.body == null ? '' : p.body)}"></p><a class="read-more" th:if="${p.kind.name() == 'BLOG'}" th:href="@{/posts/{id}(id=${p.id})}">阅读全文 <i class="fa fa-angle-right"></i></a><div class="tag-line"><span class="tag" th:each="tag : ${p.tags}" th:text="${tag.name}"></span></div></div></article></div>
+                <div class="empty" th:if="${#lists.isEmpty(posts)}">没有符合条件的内容，换个关键词试试。</div>
+            </section>
         </main>
     </body>
 </html>

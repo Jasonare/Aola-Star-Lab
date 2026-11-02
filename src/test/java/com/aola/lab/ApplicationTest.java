@@ -40,6 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.username=sa",
         "spring.datasource.password=",
         "spring.jpa.hibernate.ddl-auto=create-drop",
+        "app.cos.enabled=false",
         "app.storage=./target/test-uploads"
 })
 @AutoConfigureMockMvc
@@ -126,11 +127,23 @@ class ApplicationTest {
 
     @Test
     void ordinaryUserCanLoginWithoutVerificationCode() throws Exception {
-        mvc.perform(post("/login").with(csrf())
+        var loginResult = mvc.perform(post("/login").with(csrf())
                 .param("username", "author")
                 .param("password", "password123"))
                 .andExpect(status().is3xxRedirection())
-                .andExpect(header().string("Location", "/"));
+                .andExpect(header().string("Location", "/"))
+                .andReturn();
+
+        var session = (org.springframework.mock.web.MockHttpSession) loginResult.getRequest().getSession(false);
+        assertThat(session.getAttribute("showLoginWelcome")).isEqualTo(true);
+        mvc.perform(get("/").session(session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "这里是Aola Star Lab，是一个奥拉星怀旧社区网站，目前包括发布文章、发布视频、资源下载等功能，后续会持续更新，感谢大家的支持！开发者：Jasonare")));
+        mvc.perform(get("/").session((jakarta.servlet.http.HttpSession) session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("alert(\"这里是Aola Star Lab"))));
     }
 
     @Test

@@ -137,6 +137,11 @@ public class LabService {
         p.setTitle(title.trim());
         p.setBody(body);
         p.setVisibility(visibility);
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        if (p.getId() == null) {
+            p.setCreatedAt(now);
+        }
+        p.setUpdatedAt(now);
         p.setReview(Review.PENDING);
         p.setRejectionReason(null);
         List<Long> ids = tagIds == null ? List.of() : tagIds.stream().distinct().toList();
@@ -151,7 +156,7 @@ public class LabService {
         posts.save(p);
     }
 
-    public void comment(User user, Long postId, String body) {
+    public void comment(User user, Long postId, Long parentId, String body) {
         Post p = visiblePost(user, postId);
         if (p.getKind() != Kind.BLOG || p.getReview() != Review.APPROVED) {
             throw new IllegalArgumentException("仅已审核博客可评论");
@@ -159,9 +164,17 @@ public class LabService {
         if (body == null || body.isBlank() || body.length() > 1000) {
             throw new IllegalArgumentException("评论须为1至1000字");
         }
+        Comment parent = null;
+        if (parentId != null) {
+            parent = comments.findById(parentId).orElseThrow(() -> new IllegalArgumentException("要回复的评论不存在"));
+            if (!parent.getPost().getId().equals(p.getId()) || parent.getParent() != null) {
+                throw new IllegalArgumentException("只能回复当前文章的一级评论");
+            }
+        }
         Comment c = new Comment();
         c.setPost(p);
         c.setAuthor(user);
+        c.setParent(parent);
         c.setBody(body.trim());
         comments.save(c);
     }

@@ -1,32 +1,42 @@
 <!DOCTYPE html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
-    <head th:replace="~{layout :: head('登录')}">
-    </head>
+    <head th:replace="~{layout :: head('登录')}"></head>
     <body class="auth-page">
-        <main>
-            <h1>
-                奥拉星资源站
-            </h1>
-            <h2>
-                登录
-            </h2>
-            <p th:if="${param.error}">
-                用户名、密码或管理员验证码错误。
-            </p>
-            <p th:if="${param.registered}">
-                注册成功，请登录。
-            </p>
-            <p th:if="${param.logout}">
-                已退出。
-            </p>
-            <form th:action="@{/login}" method="post">
-                <label>用户名 <input name="username" required autocomplete="username"></label>
-                <label>密码 <input type="password" name="password" required autocomplete="current-password"></label>
-                <label>管理员验证码（仅管理员登录需要）<input name="verificationCode" autocomplete="off"></label>
-                <button>登录</button>
+        <main class="auth-card">
+            <div class="auth-brand"><span class="brand-mark">✦</span><span><strong>奥拉星怀旧社区</strong><small>登录工作台</small></span></div>
+            <h1>欢迎回来</h1>
+            <p class="auth-lead">选择你的身份，进入奥拉星怀旧社区。</p>
+            <div class="alert alert-danger" th:if="${param.error}">用户名、密码或管理员验证码错误。</div>
+            <div class="alert" th:if="${param.registered}">个人账号注册成功，请登录。</div>
+            <div class="alert" th:if="${param.logout}">你已安全退出。</div>
+            <form th:action="@{/login}" method="post" id="login-form">
+                <fieldset class="role-picker">
+                    <legend>登录身份</legend>
+                    <label class="role-option"><input type="radio" name="role" value="PERSONAL" checked><span><strong>个人用户</strong><small>浏览内容、发布和互动</small></span></label>
+                    <label class="role-option"><input type="radio" name="role" value="ADMIN"><span><strong>管理员</strong><small>审核内容与管理资源</small></span></label>
+                </fieldset>
+                <label>用户名<input name="username" required autocomplete="username" placeholder="输入用户名"></label>
+                <label>密码<input type="password" name="password" required autocomplete="current-password" placeholder="输入密码"></label>
+                <div class="admin-code-field" id="admin-code-field" hidden>
+                    <label>管理员验证码<input id="verification-code" name="verificationCode" autocomplete="off" placeholder="输入管理员验证码"></label>
+                    <p class="field-hint">仅管理员身份需要填写此项。</p>
+                </div>
+                <button class="auth-submit" type="submit">登录工作台</button>
             </form>
-            <a th:href="@{/register}">注册个人账号</a>
+            <p class="auth-footer">还没有个人账号？<a th:href="@{/register}">注册个人账号</a></p>
         </main>
+        <script>
+            const roleInputs = document.querySelectorAll('input[name="role"]');
+            const adminCodeField = document.getElementById('admin-code-field');
+            const verificationCode = document.getElementById('verification-code');
+            function syncRoleFields() {
+                const isAdmin = document.querySelector('input[name="role"]:checked').value === 'ADMIN';
+                adminCodeField.hidden = !isAdmin;
+                verificationCode.required = isAdmin;
+                if (!isAdmin) verificationCode.value = '';
+            }
+            roleInputs.forEach((input) => input.addEventListener('change', syncRoleFields));
+            syncRoleFields();
+        </script>
     </body>
 </html>
-

@@ -5,6 +5,8 @@ import java.util.HashSet;
 import java.util.Set;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -15,6 +17,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
@@ -149,12 +152,35 @@ public class Model {
         @Column(length = 100)
         private String fileType;
 
+        @ElementCollection
+        @CollectionTable(name = "post_images", joinColumns = @JoinColumn(name = "post_id"))
+        @Column(name = "file_key", length = 100)
+        private java.util.List<String> imageKeys = new java.util.ArrayList<>();
+
+        @ElementCollection
+        @CollectionTable(name = "post_image_types", joinColumns = @JoinColumn(name = "post_id"))
+        @Column(name = "file_type", length = 100)
+        private java.util.List<String> imageTypes = new java.util.ArrayList<>();
+
         @ManyToMany
         @JoinTable(name = "post_tags")
         private Set<Tag> tags = new HashSet<>();
 
-        @Column(nullable = false)
+        @Column(nullable = false, updatable = false)
         private LocalDateTime createdAt = LocalDateTime.now();
+
+        @Column(nullable = false)
+        private LocalDateTime updatedAt;
+
+        @jakarta.persistence.PrePersist
+        void initializeTimestamps() {
+            if (createdAt == null) {
+                createdAt = LocalDateTime.now();
+            }
+            if (updatedAt == null) {
+                updatedAt = createdAt;
+            }
+        }
     }
 
     @Entity
@@ -171,6 +197,14 @@ public class Model {
 
         @ManyToOne(optional = false)
         private User author;
+
+        @ManyToOne
+        @JoinColumn(name = "parent_id")
+        private Comment parent;
+
+        @OneToMany(mappedBy = "parent")
+        @jakarta.persistence.OrderBy("createdAt ASC")
+        private java.util.List<Comment> replies = new java.util.ArrayList<>();
 
         @Column(nullable = false, length = 1000)
         private String body;
@@ -190,6 +224,13 @@ public class Model {
 
         @Column(nullable = false, unique = true, length = 100)
         private String name;
+
+        @ManyToOne
+        @JoinColumn(name = "parent_id")
+        private Folder parent;
+
+        @OneToMany(mappedBy = "parent")
+        private java.util.List<Folder> children = new java.util.ArrayList<>();
     }
 
     @Entity

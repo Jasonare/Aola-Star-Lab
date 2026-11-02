@@ -1,5 +1,6 @@
 package com.aola.lab;
 
+import com.aola.lab.Model.Comment;
 import com.aola.lab.Model.Folder;
 import com.aola.lab.Model.Kind;
 import com.aola.lab.Model.Post;
@@ -19,10 +20,12 @@ import com.aola.lab.Repositories.Users;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Locale;
 import java.util.NoSuchElementException;
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -94,13 +97,29 @@ public class SiteController {
     }
 
     @GetMapping("/")
-    public String dashboard(Authentication auth, Model model) {
+    public String dashboard(Authentication auth, jakarta.servlet.http.HttpServletRequest request, Model model) {
         User user = current(auth);
+        jakarta.servlet.http.HttpSession session = request.getSession(false);
+        if (session != null && Boolean.TRUE.equals(session.getAttribute("showLoginWelcome"))) {
+            model.addAttribute("showLoginWelcome", true);
+            session.removeAttribute("showLoginWelcome");
+        }
         model.addAttribute("blogCount", posts.countByAuthorAndKind(user, Kind.BLOG));
         model.addAttribute("videoCount", posts.countByAuthorAndKind(user, Kind.VIDEO));
         model.addAttribute("recentComments", comments.findTop5ByPostAuthorOrderByCreatedAtDesc(user));
         model.addAttribute("logs", logs.findTop5ByUserOrderByLoggedAtDescIdDesc(user));
         return "dashboard";
+    }
+
+    @GetMapping("/works")
+    public String works(Authentication auth, @RequestParam(defaultValue = "BLOG") Kind kind, Model model) {
+        User user = current(auth);
+        List<Post> userWorks = posts.findByAuthorAndKindOrderByUpdatedAtDesc(user, kind);
+        model.addAttribute("works", userWorks);
+        model.addAttribute("postDates", userWorks.stream().collect(java.util.stream.Collectors.toMap(
+                Post::getId, this::postDateLabel)));
+        model.addAttribute("selectedKind", kind);
+        return "works";
     }
 
     @GetMapping("/friends")
@@ -122,22 +141,48 @@ public class SiteController {
         return "redirect:/friends";
     }
 
+    private String postDateLabel(Post post) {
+        boolean updated = post.getUpdatedAt() != null && post.getCreatedAt() != null
+                && post.getUpdatedAt().isAfter(post.getCreatedAt());
+        LocalDateTime displayTime = updated ? post.getUpdatedAt() : post.getCreatedAt();
+        return (updated ? "更新于 " : "发布于 ")
+                + java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").format(displayTime);
+    }
+
     @GetMapping("/posts")
     public String posts(Authentication auth, @RequestParam(required = false) String q,
-            @RequestParam(required = false) Long tag, @RequestParam(required = false) Kind kind, Model model) {
+            @RequestParam(required = false) Long tag, @RequestParam(required = false) Kind kind,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate until, Model model) {
+        if (from != null && until != null && from.isAfter(until)) {
+            throw new IllegalArgumentException("起始时间不能晚于终止时间");
+        }
         User user = current(auth);
         String query = q == null ? "" : q.trim().toLowerCase(Locale.ROOT);
-        model.addAttribute("posts", posts.findAllByOrderByCreatedAtDesc().stream()
+        LocalDateTime fromTime = from == null ? null : from.atStartOfDay();
+        LocalDateTime untilTime = until == null ? null : until.plusDays(1).atStartOfDay();
+        List<Post> source = fromTime != null && untilTime != null
+                ? posts.findByUpdatedAtGreaterThanEqualAndUpdatedAtLessThanOrderByUpdatedAtDesc(fromTime, untilTime)
+                : fromTime != null ? posts.findByUpdatedAtGreaterThanEqualOrderByUpdatedAtDesc(fromTime)
+                : untilTime != null ? posts.findByUpdatedAtLessThanOrderByUpdatedAtDesc(untilTime)
+                : posts.findAllByOrderByUpdatedAtDesc();
+        List<Post> visiblePosts = source.stream()
                 .filter(post -> service.canView(user, post))
                 .filter(post -> kind == null || post.getKind() == kind)
                 .filter(post -> query.isEmpty() || post.getTitle().toLowerCase(Locale.ROOT).contains(query)
                         || post.getBody() != null && post.getBody().toLowerCase(Locale.ROOT).contains(query))
                 .filter(post -> tag == null || post.getTags().stream().anyMatch(item -> item.getId().equals(tag)))
-                .toList());
+                .toList();
+        model.addAttribute("posts", visiblePosts);
+        model.addAttribute("postDates", visiblePosts.stream().collect(java.util.stream.Collectors.toMap(
+                Post::getId, this::postDateLabel)));
         model.addAttribute("tags", tags.findAll());
         model.addAttribute("query", q);
         model.addAttribute("selectedTag", tag);
         model.addAttribute("selectedKind", kind);
+        model.addAttribute("fromDate", from);
+        model.addAttribute("untilDate", until);
+        model.addAttribute("sectionTitle", kind == Kind.VIDEO ? "视频专区" : kind == Kind.BLOG ? "文章专区" : "内容库");
         return "posts";
     }
 
@@ -165,68 +210,156 @@ public class SiteController {
     public String save(Authentication auth, @RequestParam(required = false) Long id, @RequestParam Kind kind,
             @RequestParam String title, @RequestParam(required = false) String body,
             @RequestParam Visibility visibility, @RequestParam(required = false) List<Long> tagIds,
-            @RequestParam(required = false) MultipartFile file)
+            @RequestParam(required = false) List<MultipartFile> files)
             throws IOException {
         User user = current(auth);
         Post post = id == null ? new Post() : service.ownedPost(user, id);
-        FileStore.Stored uploaded = null;
+        List<FileStore.Stored> uploaded = new ArrayList<>();
         try {
-            if (file != null && !file.isEmpty()) {
-                uploaded = files.save(file, kind == Kind.BLOG ? "image" : "video");
-                post.setFileKey(uploaded.key());
-                post.setFileType(uploaded.type());
+            List<MultipartFile> incoming = files == null ? List.of() : files.stream().filter(file -> !file.isEmpty()).toList();
+            if (kind == Kind.BLOG && incoming.size() > 9) {
+                throw new IllegalArgumentException("文章最多上传9张图片");
+            }
+            if (kind == Kind.VIDEO && incoming.size() > 1) {
+                throw new IllegalArgumentException("视频只能上传一个MP4文件");
+            }
+            if (kind == Kind.BLOG) {
+                if (!incoming.isEmpty()) {
+                    post.getImageKeys().clear();
+                    post.getImageTypes().clear();
+                    for (MultipartFile file : incoming) {
+                        if (file.getContentType() == null || !file.getContentType().startsWith("image/")) {
+                            throw new IllegalArgumentException("文章仅支持上传图片");
+                        }
+                        FileStore.Stored saved = this.files.save(file, "image");
+                        uploaded.add(saved);
+                        post.getImageKeys().add(saved.key());
+                        post.getImageTypes().add(saved.type());
+                    }
+                }
+                post.setFileKey(null);
+                post.setFileType(null);
+            } else if (!incoming.isEmpty()) {
+                MultipartFile file = incoming.get(0);
+                FileStore.Stored saved = this.files.save(file, "video");
+                uploaded.add(saved);
+                post.setFileKey(saved.key());
+                post.setFileType(saved.type());
             }
             service.savePost(post, user, kind, title, body, visibility, tagIds);
         } catch (RuntimeException | IOException e) {
-            if (uploaded != null) {
-                files.delete(uploaded.key());
+            for (FileStore.Stored file : uploaded) {
+                this.files.delete(file.key());
             }
             throw e;
         }
-        return "redirect:/posts/" + post.getId();
+        return "redirect:/posts/" + post.getId() + "?published";
     }
 
     @GetMapping("/posts/{id}")
     public String detail(Authentication auth, @PathVariable Long id, Model model) {
         Post post = service.visiblePost(current(auth), id);
         model.addAttribute("post", post);
-        model.addAttribute("comments", comments.findByPostOrderByCreatedAtDesc(post));
+        model.addAttribute("postDateLabel", postDateLabel(post));
+        List<Comment> topLevelComments = comments.findByPostAndParentIsNullOrderByCreatedAtDesc(post);
+        for (Comment comment : topLevelComments) {
+            comment.setReplies(comments.findByParentOrderByCreatedAtAsc(comment));
+        }
+        model.addAttribute("comments", topLevelComments);
         return "post-detail";
     }
 
     @PostMapping("/posts/{id}/comments")
-    public String comment(Authentication auth, @PathVariable Long id, @RequestParam String body) {
-        service.comment(current(auth), id, body);
+    public String comment(Authentication auth, @PathVariable Long id, @RequestParam(required = false) Long parentId,
+            @RequestParam String body) {
+        service.comment(current(auth), id, parentId, body);
         return "redirect:/posts/" + id;
     }
 
+    @PostMapping("/posts/{id}/delete")
+    public String deletePost(Authentication auth, @PathVariable Long id) throws IOException {
+        Post post = service.ownedPost(current(auth), id);
+        if (post.getFileKey() != null) {
+            files.delete(post.getFileKey());
+        }
+        for (String imageKey : post.getImageKeys()) {
+            files.delete(imageKey);
+        }
+        posts.delete(post);
+        return "redirect:/works?kind=" + post.getKind().name();
+    }
+
     @GetMapping("/posts/{id}/file")
-    public ResponseEntity<FileSystemResource> postFile(Authentication auth, @PathVariable Long id) {
+    public ResponseEntity<org.springframework.core.io.Resource> postFile(Authentication auth, @PathVariable Long id) {
         Post post = service.visiblePost(current(auth), id);
         if (post.getFileKey() == null) {
             throw new IllegalArgumentException("文件不存在");
+        }
+        if (files.url(post.getFileKey()) != null) {
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                    .header("X-Content-Type-Options", "nosniff")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                    .contentType(MediaType.parseMediaType(post.getFileType()))
+                    .body(files.load(post.getFileKey()));
         }
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .header("X-Content-Type-Options", "nosniff")
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .contentType(MediaType.parseMediaType(post.getFileType()))
                 .body(files.load(post.getFileKey()));
     }
 
+    @GetMapping("/posts/{id}/images/{index}")
+    public ResponseEntity<org.springframework.core.io.Resource> postImage(Authentication auth, @PathVariable Long id, @PathVariable int index) {
+        Post post = service.visiblePost(current(auth), id);
+        if (index < 0 || index >= post.getImageKeys().size()) {
+            throw new IllegalArgumentException("图片不存在");
+        }
+        String key = post.getImageKeys().get(index);
+        if (files.url(key) != null) {
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                    .contentType(MediaType.parseMediaType(post.getImageTypes().get(index)))
+                    .body(files.load(key));
+        }
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                .contentType(MediaType.parseMediaType(post.getImageTypes().get(index)))
+                .body(files.load(key));
+    }
+
     @GetMapping("/resources")
-    public String resources(Authentication auth, Model model) {
+    public String resources(Authentication auth, @RequestParam(required = false) Long folderId, Model model) {
         User user = current(auth);
-        model.addAttribute("items", user.isAdmin() ? resources.findAll() : resources.findByVisibleTrue());
-        model.addAttribute("folders", folders.findAll());
+        Folder activeFolder = folderId == null ? null : folders.findById(folderId).orElseThrow();
+        List<ResourceFile> available = user.isAdmin() ? resources.findAll() : resources.findByVisibleTrue();
+        model.addAttribute("items", activeFolder == null ? List.of() : available.stream()
+                .filter(item -> item.getFolder().getId().equals(activeFolder.getId()))
+                .toList());
+        model.addAttribute("foldersForUpload", folders.findAll());
+        model.addAttribute("folders", activeFolder == null ? folders.findByParentIsNullOrderByNameAsc()
+                : folders.findByParentOrderByNameAsc(activeFolder));
+        model.addAttribute("activeFolder", activeFolder);
+        model.addAttribute("parentFolder", activeFolder == null ? null : activeFolder.getParent());
         return "resources";
     }
 
     @GetMapping("/resources/{id}/file")
-    public ResponseEntity<FileSystemResource> resourceFile(Authentication auth, @PathVariable Long id) {
+    public ResponseEntity<org.springframework.core.io.Resource> resourceFile(Authentication auth, @PathVariable Long id) {
         ResourceFile resource = resources.findById(id).orElseThrow();
         if (!resource.isVisible() && !current(auth).isAdmin()) {
             throw new AccessDeniedException("无权访问");
+        }
+        if (files.url(resource.getFileKey()) != null) {
+            return ResponseEntity.ok()
+                    .cacheControl(CacheControl.noStore())
+                    .header("X-Content-Type-Options", "nosniff")
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            ContentDisposition.attachment().filename(resource.getName(), StandardCharsets.UTF_8)
+                                    .build().toString())
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(files.load(resource.getFileKey()));
         }
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
@@ -239,12 +372,19 @@ public class SiteController {
     }
 
     @GetMapping("/admin")
-    public String admin(Model model) {
-        model.addAttribute("pending", posts.findAllByOrderByCreatedAtDesc().stream()
-                .filter(post -> post.getReview() == Review.PENDING)
-                .toList());
-        model.addAttribute("tags", tags.findAll());
-        model.addAttribute("folders", folders.findAll());
+    public String admin(@RequestParam(required = false) String tagQuery, Model model) {
+        List<Post> pending = posts.findAllByOrderByUpdatedAtDesc().stream()
+                .filter(post -> post.getReview() == Review.PENDING).toList();
+        model.addAttribute("pending", pending);
+        model.addAttribute("pendingBlogs", pending.stream().filter(post -> post.getKind() == Kind.BLOG).toList());
+        model.addAttribute("pendingVideos", pending.stream().filter(post -> post.getKind() == Kind.VIDEO).toList());
+        String normalizedTagQuery = tagQuery == null ? "" : tagQuery.trim().toLowerCase(Locale.ROOT);
+        model.addAttribute("tags", tags.findAll().stream()
+                .filter(tag -> normalizedTagQuery.isEmpty() || tag.getName().toLowerCase(Locale.ROOT).contains(normalizedTagQuery)).toList());
+        model.addAttribute("tagQuery", tagQuery);
+        model.addAttribute("folders", folders.findByParentIsNullOrderByNameAsc());
+        model.addAttribute("allFolders", folders.findAll());
+        model.addAttribute("foldersForUpload", folders.findAll());
         return "admin";
     }
 
@@ -267,6 +407,18 @@ public class SiteController {
         return "redirect:/admin";
     }
 
+    @PostMapping("/admin/tags/{id}")
+    public String editTag(@PathVariable Long id, @RequestParam String name) {
+        Tag tag = tags.findById(id).orElseThrow();
+        name = name.trim();
+        if (name.isEmpty() || name.length() > 40 || (tags.existsByName(name) && !tag.getName().equals(name))) {
+            throw new IllegalArgumentException("标签名称无效或已存在");
+        }
+        tag.setName(name);
+        tags.save(tag);
+        return "redirect:/admin";
+    }
+
     @Transactional
     @PostMapping("/admin/tags/{id}/delete")
     public String deleteTag(@PathVariable Long id) {
@@ -281,14 +433,40 @@ public class SiteController {
     }
 
     @PostMapping("/admin/folders")
-    public String folder(@RequestParam String name) {
+    public String folder(@RequestParam String name, @RequestParam(required = false) Long parentId) {
         name = name.trim();
         if (name.isEmpty() || name.length() > 100 || folders.existsByName(name)) {
             throw new IllegalArgumentException("目录名称无效或已存在");
         }
         Folder folder = new Folder();
         folder.setName(name);
+        if (parentId != null) {
+            folder.setParent(folders.findById(parentId).orElseThrow());
+        }
         folders.save(folder);
+        return "redirect:/admin";
+    }
+
+    @PostMapping("/admin/folders/{id}/edit")
+    public String editFolder(@PathVariable Long id, @RequestParam String name) {
+        Folder folder = folders.findById(id).orElseThrow();
+        name = name.trim();
+        if (name.isEmpty() || name.length() > 100 || folders.existsByNameAndIdNot(name, id)) {
+            throw new IllegalArgumentException("目录名称无效或已存在");
+        }
+        folder.setName(name);
+        folders.save(folder);
+        return "redirect:/admin";
+    }
+
+    @Transactional
+    @PostMapping("/admin/folders/{id}/delete")
+    public String deleteFolder(@PathVariable Long id) {
+        Folder folder = folders.findById(id).orElseThrow();
+        if (folders.existsByParent(folder) || resources.existsByFolder(folder)) {
+            throw new IllegalArgumentException("该目录包含子目录或资源，请先移除内容");
+        }
+        folders.delete(folder);
         return "redirect:/admin";
     }
 

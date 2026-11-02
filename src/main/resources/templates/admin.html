@@ -1,66 +1,92 @@
 <!DOCTYPE html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
-    <head th:replace="~{layout :: head('管理')}">
-    </head>
+    <head th:replace="~{layout :: head('管理中心')}"></head>
     <body>
-        <nav th:replace="~{layout :: nav}">
-        </nav>
+        <nav th:replace="~{layout :: nav}"></nav>
         <main>
-            <h1>
-                管理中心
-            </h1>
-            <section>
-                <h2>
-                    待审核
-                </h2>
-                <p th:if="${#lists.isEmpty(pending)}">
-                    暂无待审核内容。
-                </p>
-                <article th:each="p : ${pending}">
-                    <h3>
-                        <a th:href="@{/posts/{id}(id=${p.id})}" th:text="${p.title}"></a>
-                    </h3>
-                    <p>
-                        <span th:text="${p.kind}"></span> · <span th:text="${p.author.username}"></span>
-                    </p>
-                    <form th:action="@{/admin/review/{id}(id=${p.id})}" method="post">
-                        <button name="approve" value="true">通过</button>
-                    </form>
-                    <form th:action="@{/admin/review/{id}(id=${p.id})}" method="post">
-                        <label>驳回原因 <input name="reason" maxlength="500" required></label>
-                        <button name="approve" value="false">驳回</button>
-                    </form>
-                </article>
-            </section>
-            <section>
-                <h2>
-                    标签管理
-                </h2>
-                <form th:action="@{/admin/tags}" method="post">
-                    <input name="name" maxlength="40" required><button>添加标签</button>
-                </form>
-                <ul>
-                    <li th:each="tag : ${tags}">
-                        <span th:text="${tag.name}"></span>
-                        <form th:action="@{/admin/tags/{id}/delete(id=${tag.id})}" method="post">
-                            <button>删除标签</button>
-                        </form>
-                    </li>
-                </ul>
-            </section>
-            <section>
-                <h2>
-                    资源目录管理
-                </h2>
-                <form th:action="@{/admin/folders}" method="post">
-                    <input name="name" maxlength="100" required><button>新建目录</button>
-                </form>
-                <ul>
-                    <li th:each="folder : ${folders}" th:text="${folder.name}">
-                    </li>
-                </ul>
-                <a th:href="@{/resources}">管理资源文件</a>
-            </section>
+            <div class="page-heading"><div><p class="eyebrow">系统后台</p><h1>管理中心</h1><p class="muted">集中处理内容审核、标签和资源目录。</p></div></div>
+            <div class="admin-tabs" role="tablist"><button class="tab-button active" data-tab="tags-tab">标签管理</button><button class="tab-button" data-tab="review-tab">审核中心</button><button class="tab-button" data-tab="folders-tab">资源目录管理</button></div>
+            <section id="tags-tab" class="admin-tab-panel active"><div class="section-header"><h2>标签管理</h2><form class="compact-search" th:action="@{/admin}" method="get"><input name="tagQuery" th:value="${tagQuery}" placeholder="搜索标签"><button class="btn-secondary">搜索</button></form><button class="btn" type="button" data-open-add-tag>新增标签</button></div><form class="add-tag-form" th:action="@{/admin/tags}" method="post" hidden><input name="name" maxlength="40" required placeholder="标签名称"><button>保存标签</button></form><div class="tag-admin-list"><div class="tag-admin-row" th:each="tag,stat : ${tags}"><span class="tag-color" th:classappend="${'tag-color-' + (stat.index % 9)}" th:text="${tag.name}"></span><span class="row-actions tag-actions"><button class="icon-action edit-tag" type="button" title="编辑标签" aria-label="编辑标签" th:attr="data-tag-id=${tag.id},data-tag-name=${tag.name}"><i class="fa fa-pencil" aria-hidden="true"></i></button><form th:action="@{/admin/tags/{id}/delete(id=${tag.id})}" method="post" onsubmit="return confirm('确认删除此标签？')"><button type="submit" class="icon-action danger-action" title="删除标签" aria-label="删除标签"><i class="fa fa-trash-o" aria-hidden="true"></i></button></form></span></div></div></section>
+            <section id="review-tab" class="admin-tab-panel"><div class="section-header"><h2>审核中心</h2></div><div class="sub-tabs"><button class="sub-tab active" data-subtab="article-review">文章审核</button><button class="sub-tab" data-subtab="video-review">视频审核</button></div><div id="article-review" class="review-panel active"><div class="review-list"><div class="review-row" th:each="p : ${pendingBlogs}"><a th:href="@{/posts/{id}(id=${p.id})}" th:text="${p.title}"></a><span class="muted" th:text="${p.author.username}"></span><div class="row-actions"><form th:action="@{/admin/review/{id}(id=${p.id})}" method="post"><button name="approve" value="true">通过</button></form><button class="btn-danger-outline reject-open" type="button" th:attr="data-post-id=${p.id}">驳回</button></div></div><div class="empty" th:if="${#lists.isEmpty(pendingBlogs)}">暂无待审核文章。</div></div></div><div id="video-review" class="review-panel"><div class="review-list"><div class="review-row" th:each="p : ${pendingVideos}"><a th:href="@{/posts/{id}(id=${p.id})}" th:text="${p.title}"></a><span class="muted" th:text="${p.author.username}"></span><div class="row-actions"><form th:action="@{/admin/review/{id}(id=${p.id})}" method="post"><button name="approve" value="true">通过</button></form><button class="btn-danger-outline reject-open" type="button" th:attr="data-post-id=${p.id}">驳回</button></div></div><div class="empty" th:if="${#lists.isEmpty(pendingVideos)}">暂无待审核视频。</div></div></div></section>
+            <section id="folders-tab" class="admin-tab-panel"><div class="section-header"><h2>资源目录管理</h2><span class="muted">点击目录后选择操作</span></div><div class="folder-tree"><button type="button" class="folder-node root-node active" data-folder="root"><i class="fa fa-folder-open-o"></i> 根目录</button><div th:each="folder : ${folders}" class="folder-group"><button type="button" class="folder-node" th:attr="data-folder=${folder.id},data-name=${folder.name}"><i class="fa fa-folder-o"></i> <span th:text="${folder.name}"></span></button><button type="button" class="folder-node child-folder-node" th:each="child : ${folder.children}" th:attr="data-folder=${child.id},data-name=${child.name}"><i class="fa fa-folder-o"></i> <span th:text="${child.name}"></span></button></div></div><button class="btn-secondary" type="button" data-open-folder-actions><i class="fa fa-ellipsis-h"></i> 目录操作</button><a class="btn btn-secondary" th:href="@{/resources}"><i class="fa fa-external-link"></i> 前往资源中心</a><form class="admin-resource-upload" th:action="@{/admin/resources}" method="post" enctype="multipart/form-data" hidden><input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><input type="hidden" name="visible" value="false"><label>上传到选中目录<input type="file" name="file" required></label><button type="submit"><i class="fa fa-upload"></i> 上传文件</button></form></section>
         </main>
+        <dialog id="reject-dialog"><form method="post" id="reject-form"><h3>填写驳回原因</h3><textarea name="reason" maxlength="500" required placeholder="告诉作者需要修改什么"></textarea><div class="actions"><button type="button" data-close-dialog>取消</button><button class="btn-danger" name="approve" value="false">确认驳回</button></div></form></dialog>
+        <dialog id="folder-dialog" class="folder-action-dialog"><h3>目录操作</h3><p class="muted" data-selected-folder>当前选中：根目录</p><div class="folder-action-options"><button type="button" data-folder-action="create"><i class="fa fa-folder-o"></i> 创建子目录</button><button type="button" data-folder-action="upload"><i class="fa fa-upload"></i> 上传文件</button><button type="button" class="btn-secondary" data-folder-action="edit"><i class="fa fa-pencil"></i> 编辑</button><button type="button" class="btn-danger-outline" data-folder-action="delete"><i class="fa fa-trash-o"></i> 删除</button><button type="button" class="btn-secondary" data-folder-action="cancel" onclick="document.getElementById('folder-dialog').close()"><i class="fa fa-times"></i> 取消</button></div></dialog>
+        <dialog id="folder-edit-dialog"><form method="post" id="folder-form"><input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><h3>创建目录</h3><label>目录名称<input name="name" maxlength="100" required></label><input type="hidden" name="parentId"><div class="actions"><button type="button" class="btn-secondary" data-close-folder-dialog>取消</button><button>保存</button></div></form></dialog>
+        <script>
+            document.querySelectorAll('.tab-button').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.tab-button,.admin-tab-panel').forEach((item) => item.classList.remove('active')); button.classList.add('active'); document.getElementById(button.dataset.tab).classList.add('active'); }));
+            document.querySelectorAll('.sub-tab').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.sub-tab,.review-panel').forEach((item) => item.classList.remove('active')); button.classList.add('active'); document.getElementById(button.dataset.subtab).classList.add('active'); }));
+            const dialog = document.getElementById('reject-dialog'); const form = document.getElementById('reject-form'); document.querySelectorAll('.reject-open').forEach((button) => button.addEventListener('click', () => { form.action = '/admin/review/' + button.dataset.postId; dialog.showModal(); })); document.querySelector('[data-close-dialog]').addEventListener('click', () => dialog.close());
+            document.querySelector('[data-open-add-tag]')?.addEventListener('click', () => document.querySelector('.add-tag-form').hidden = false);
+            const folderDialog = document.getElementById('folder-dialog');
+            const folderForm = document.getElementById('folder-form');
+            folderForm.addEventListener('submit', () => {
+                folderForm.querySelectorAll(':disabled').forEach((field) => { field.disabled = false; field.dataset.restoreDisabled = 'true'; });
+                setTimeout(() => folderForm.querySelectorAll('[data-restore-disabled="true"]').forEach((field) => { field.disabled = true; delete field.dataset.restoreDisabled; }), 0);
+            });
+            let selectedFolder = { id: 'root', name: '根目录' };
+            document.querySelectorAll('.folder-node').forEach((node) => node.addEventListener('click', () => {
+                document.querySelectorAll('.folder-node').forEach((item) => item.classList.remove('active'));
+                node.classList.add('active');
+                selectedFolder = { id: node.dataset.folder, name: node.dataset.name || '根目录' };
+                document.querySelector('[data-selected-folder]').textContent = '当前选中：' + selectedFolder.name;
+            }));
+            document.querySelector('[data-open-folder-actions]').addEventListener('click', () => folderDialog.showModal());
+            document.querySelector('[data-folder-action="cancel"]').addEventListener('click', () => folderDialog.close());
+            document.querySelectorAll('[data-folder-action]').forEach((button) => button.addEventListener('click', () => {
+                const action = button.dataset.folderAction;
+                if (action === 'upload') {
+                    folderDialog.close();
+                    const uploadForm = document.querySelector('.admin-resource-upload');
+                    uploadForm.querySelector('[name="file"]').value = '';
+                    let folderInput = uploadForm.querySelector('[name="folderId"]');
+                    if (!folderInput) {
+                        folderInput = document.createElement('input');
+                        folderInput.type = 'hidden';
+                        folderInput.name = 'folderId';
+                        uploadForm.appendChild(folderInput);
+                    }
+                    if (selectedFolder.id === 'root') {
+                        alert('请先选择一个目录后再上传文件。');
+                        return;
+                    }
+                    folderInput.value = selectedFolder.id;
+                    uploadForm.hidden = false;
+                    uploadForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return;
+                }
+                folderForm.reset();
+                folderForm.querySelector('[name="parentId"]').value = selectedFolder.id === 'root' ? '' : selectedFolder.id;
+                folderForm.querySelector('[name="name"]').disabled = false;
+                if (action === 'create') {
+                    folderForm.action = '/admin/folders';
+                    folderForm.querySelector('[name="name"]').value = '';
+                    folderForm.querySelector('[name="parentId"]').disabled = false;
+                    folderForm.querySelector('h3').textContent = selectedFolder.id === 'root' ? '在根目录创建目录' : '在“' + selectedFolder.name + '”下创建子目录';
+                } else if (action === 'edit' && selectedFolder.id !== 'root') {
+                    folderForm.action = '/admin/folders/' + selectedFolder.id + '/edit';
+                    folderForm.querySelector('[name="name"]').value = selectedFolder.name;
+                    folderForm.querySelector('[name="parentId"]').disabled = true;
+                    folderForm.querySelector('h3').textContent = '编辑目录';
+                } else if (action === 'delete' && selectedFolder.id !== 'root') {
+                    if (!confirm('确认删除目录“' + selectedFolder.name + '”？仅空目录可以删除。')) return;
+                    folderForm.action = '/admin/folders/' + selectedFolder.id + '/delete';
+                    folderForm.querySelector('[name="name"]').disabled = true;
+                    folderForm.querySelector('[name="parentId"]').disabled = true;
+                    folderForm.querySelector('[name="name"]').required = false;
+                    folderForm.requestSubmit();
+                    folderDialog.close();
+                    return;
+                } else if (action !== 'cancel') {
+                    return;
+                } else {
+                    return;
+                }
+                folderDialog.close();
+                document.getElementById('folder-edit-dialog').showModal();
+            }));
+            document.querySelectorAll('[data-close-folder-dialog]').forEach((button) => button.addEventListener('click', () => document.getElementById('folder-edit-dialog').close()));
+            document.querySelectorAll('.edit-tag').forEach((button) => button.addEventListener('click', () => { const name = prompt('修改标签名称', button.dataset.tagName); if (!name) return; const form = document.createElement('form'); form.method = 'post'; form.action = '/admin/tags/' + button.dataset.tagId; form.innerHTML = '<input name="name">'; form.elements.name.value = name; document.body.appendChild(form); form.submit(); }));
+        </script>
     </body>
 </html>

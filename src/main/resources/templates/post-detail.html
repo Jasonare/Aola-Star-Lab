@@ -6,11 +6,12 @@
         <nav th:replace="~{layout :: nav}">
         </nav>
         <main>
+            <div class="success-banner" th:if="${param.published}">发布成功，内容已提交审核。<a class="btn btn-secondary btn-sm" th:href="@{/}">返回工作台</a></div>
             <article>
                 <h1 th:text="${post.title}">
                 </h1>
-                <p>
-                    作者：<span th:text="${post.author.username}"></span>　审核：<span th:text="${post.review}"></span>　可见范围：<span th:text="${post.visibility}"></span>
+                <p class="post-meta">
+                    作者：<span th:text="${post.author.username}"></span><span class="dot-sep">·</span><span th:text="${post.review}"></span><span class="dot-sep">·</span>可见范围：<span th:text="${post.visibility}"></span><span class="dot-sep">·</span><span th:text="${postDateLabel}"></span>
                 </p>
                 <p th:if="${post.review.name() == 'REJECTED'}">
                     驳回原因：<span th:text="${post.rejectionReason}"></span>
@@ -20,24 +21,29 @@
                 </p>
                 <p style="white-space: pre-wrap" th:text="${post.body}">
                 </p>
-                <img th:if="${post.fileKey != null and post.kind.name() == 'BLOG'}" th:src="@{/posts/{id}/file(id=${post.id})}" alt="博客图片"><video th:if="${post.fileKey != null and post.kind.name() == 'VIDEO'}" controls preload="metadata" th:src="@{/posts/{id}/file(id=${post.id})}"></video>
-                <p th:if="${post.author.id == currentUser.id}">
-                    <a th:href="@{/posts/{id}/edit(id=${post.id})}">修改并重新提交</a>
+                <div class="article-gallery" th:if="${post.kind.name() == 'BLOG' and !#lists.isEmpty(post.imageKeys)}"><img th:each="image, stat : ${post.imageKeys}" th:src="@{/posts/{id}/images/{index}(id=${post.id},index=${stat.index})}" alt="文章图片"></div>
+                <video th:if="${post.fileKey != null and post.kind.name() == 'VIDEO'}" controls preload="metadata" th:src="@{/posts/{id}/file(id=${post.id})}"></video>
+                <p class="post-edit-actions" th:if="${post.author.id == currentUser.id}">
+                    <a class="btn edit-resubmit-button" th:href="@{/posts/{id}/edit(id=${post.id})}"><i class="fa fa-pencil-square-o" aria-hidden="true"></i> 修改并重新提交</a>
                 </p>
             </article>
-            <section th:if="${post.kind.name() == 'BLOG' and post.review.name() == 'APPROVED'}">
-                <h2>
-                    评论
-                </h2>
-                <ul>
-                    <li th:each="c : ${comments}">
-                        <span th:text="${c.author.username}"></span>：<span th:text="${c.body}"></span>
-                    </li>
-                </ul>
-                <form th:action="@{/posts/{id}/comments(id=${post.id})}" method="post">
-                    <textarea name="body" maxlength="1000" required></textarea>
-                    <button>评论</button>
-                </form>
+            <section class="comment-section" id="comments" th:if="${post.kind.name() == 'BLOG' and post.review.name() == 'APPROVED'}">
+                <div class="section-header"><div><p class="eyebrow">DISCUSSION</p><h2>评论与讨论</h2></div><span class="muted" th:text="${#lists.size(comments)} + ' 条评论'"></span></div>
+                <div class="comment-list">
+                    <div class="empty" th:if="${#lists.isEmpty(comments)}">还没有评论，来说说你的想法吧。</div>
+                    <article class="comment-card" th:each="c : ${comments}" th:id="${'comment-' + c.id}">
+                        <div class="comment-avatar" th:text="${#strings.substring(c.author.username, 0, 1)}"></div>
+                        <div class="comment-content">
+                            <div class="comment-heading"><strong th:text="${c.author.username}"></strong><time th:datetime="${c.createdAt}" th:text="${#temporals.format(c.createdAt, 'yyyy-MM-dd HH:mm')}"></time></div>
+                            <p class="comment-body" th:text="${c.body}"></p>
+                            <details class="reply-compose"><summary><i class="fa fa-reply" aria-hidden="true"></i> 回复</summary>
+                                <form th:action="@{/posts/{id}/comments(id=${post.id})}" method="post"><input type="hidden" name="parentId" th:value="${c.id}"><label th:for="${'reply-' + c.id}">回复 <span th:text="${c.author.username}"></span></label><textarea th:id="${'reply-' + c.id}" name="body" maxlength="1000" required placeholder="写下你的回复…"></textarea><button type="submit" class="btn btn-sm"><i class="fa fa-paper-plane-o" aria-hidden="true"></i> 发表回复</button></form>
+                            </details>
+                            <div class="comment-replies" th:if="${!#lists.isEmpty(c.replies)}"><div class="comment-reply" th:each="reply : ${c.replies}"><div class="comment-heading"><strong th:text="${reply.author.username}"></strong><time th:datetime="${reply.createdAt}" th:text="${#temporals.format(reply.createdAt, 'yyyy-MM-dd HH:mm')}"></time></div><p class="comment-body" th:text="${reply.body}"></p></div></div>
+                        </div>
+                    </article>
+                </div>
+                <form class="comment-compose" th:action="@{/posts/{id}/comments(id=${post.id})}" method="post"><label for="comment-body">发表你的评论</label><textarea id="comment-body" name="body" maxlength="1000" required placeholder="分享你的想法…"></textarea><div class="comment-compose-footer"><span class="muted">最多 1000 字</span><button type="submit"><i class="fa fa-paper-plane-o" aria-hidden="true"></i> 发表评论</button></div></form>
             </section>
         </main>
     </body>

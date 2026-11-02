@@ -70,6 +70,7 @@ public class SecurityConfig {
                     LoginLog log = new LoginLog();
                     log.setUser(user);
                     logs.save(log);
+                    request.getSession(true).setAttribute("showLoginWelcome", true);
                     response.sendRedirect(request.getContextPath() + "/");
                 }).permitAll())
                 .logout(logout -> logout.logoutSuccessUrl("/login?logout"))
@@ -100,14 +101,20 @@ public class SecurityConfig {
 
     static final class LoginAuthenticationDetails extends WebAuthenticationDetails {
         private final String verificationCode;
+        private final String role;
 
         private LoginAuthenticationDetails(HttpServletRequest request) {
             super(request);
             this.verificationCode = request.getParameter("verificationCode");
+            this.role = request.getParameter("role");
         }
 
         String verificationCode() {
             return verificationCode;
+        }
+
+        String role() {
+            return role;
         }
     }
 
@@ -119,9 +126,17 @@ public class SecurityConfig {
             String password = authentication.getCredentials() == null ? "" : authentication.getCredentials().toString();
             String code = authentication.getDetails() instanceof LoginAuthenticationDetails details
                     ? details.verificationCode() : null;
+            String role = authentication.getDetails() instanceof LoginAuthenticationDetails details
+                    ? details.role() : null;
             UserDetails user = userDetailsService.loadUserByUsername(name);
-            if (user.getAuthorities().stream().anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()))
-                    && !ADMIN_VERIFICATION_CODE.equals(code)) {
+            boolean isAdmin = user.getAuthorities().stream().anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+            if ("ADMIN".equals(role) && !isAdmin) {
+                throw new BadCredentialsException("该账号不是管理员");
+            }
+            if ("PERSONAL".equals(role) && isAdmin) {
+                throw new BadCredentialsException("管理员账号请选择管理员身份");
+            }
+            if (isAdmin && !ADMIN_VERIFICATION_CODE.equals(code)) {
                 throw new BadCredentialsException("管理员验证码错误");
             }
             if (!passwordEncoder.matches(password, user.getPassword())) {

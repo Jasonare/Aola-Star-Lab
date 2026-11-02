@@ -2,20 +2,29 @@ package com.aola.lab;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Base64;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import com.qcloud.cos.COSClient;
+import com.qcloud.cos.ClientConfig;
+import com.qcloud.cos.auth.BasicCOSCredentials;
+import com.qcloud.cos.auth.COSCredentials;
+import com.qcloud.cos.model.ObjectMetadata;
+import com.qcloud.cos.model.PutObjectRequest;
+import com.qcloud.cos.region.Region;
+import jakarta.annotation.PreDestroy;
 
 @Service
 public class FileStore {
@@ -23,10 +32,47 @@ public class FileStore {
     }
 
     private final Path root;
+    private final COSClient cosClient;
+    private final String bucket;
+    private final String baseUrl;
 
-    public FileStore(@Value("${app.storage}") String location) throws IOException {
+    public FileStore(@Value("${app.storage}") String location,
+            @Value("${app.cos.enabled:false}") boolean cosEnabled,
+            @Value("${app.cos.bucket:aola-star-hub-1350639287}") String bucket,
+            @Value("${app.cos.region:ap-shanghai}") String region,
+            @Value("${app.cos.base-url:https://aola-star-hub-1350639287.cos.ap-shanghai.myqcloud.com/}") String baseUrl,
+            @Value("${app.cos.secret-id:}") String secretId,
+            @Value("${app.cos.secret-key:}") String secretKey) throws IOException {
         root = Paths.get(location).toAbsolutePath().normalize();
         Files.createDirectories(root);
+        this.bucket = bucket;
+        this.baseUrl = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
+        if (cosEnabled) {
+            if (secretId.isBlank() || secretKey.isBlank()) {
+                cosClient = null;
+            } else {
+                COSCredentials credentials = new BasicCOSCredentials(secretId, secretKey);
+                ClientConfig config = new ClientConfig(new Region(region));
+                cosClient = new COSClient(credentials, config);
+            }
+        } else {
+            cosClient = null;
+        }
+    }
+
+    @PreDestroy
+    public void close() {
+        if (cosClient != null) {
+            cosClient.shutdown();
+        }
+    }
+
+    public String url(String key) {
+        return isCosKey(key) ? baseUrl + key.substring(4) : null;
+    }
+
+    private boolean isCosKey(String key) {
+        return key != null && key.startsWith("cos/") && key.length() > 4;
     }
 
     public Stored save(MultipartFile file, String category) throws IOException {
@@ -63,10 +109,21 @@ public class FileStore {
                 || (category.equals("video") && !type.equals("video/mp4"))) {
             throw new IllegalArgumentException("不支持的文件类型或文件内容不匹配");
         }
-        String key = UUID.randomUUID().toString();
-        Path target = root.resolve(key);
-        try (InputStream in = file.getInputStream()) {
-            Files.copy(in, target);
+        String id = UUID.randomUUID().toString();
+        boolean useCos = cosClient != null && (category.equals("image") || category.equals("video") || category.equals("resource"));
+        String key = useCos ? "cos/" + id : id;
+        if (!useCos) {
+            Path target = root.resolve(key);
+            try (InputStream in = file.getInputStream()) {
+                Files.copy(in, target);
+            }
+        } else {
+            ObjectMetadata metadata = new ObjectMetadata();
+            metadata.setContentLength(file.getSize());
+            metadata.setContentType(type);
+            try (InputStream in = file.getInputStream()) {
+                cosClient.putObject(new PutObjectRequest(bucket, id, in, metadata));
+            }
         }
         return new Stored(key, type);
     }
@@ -83,7 +140,17 @@ public class FileStore {
         return true;
     }
 
-    public FileSystemResource load(String key) {
+    public Resource load(String key) {
+        if (isCosKey(key) && cosClient != null) {
+            String objectKey = key.substring(4);
+            try (InputStream in = cosClient.getObject(bucket, objectKey).getObjectContent();
+                    ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                in.transferTo(out);
+                return new ByteArrayResource(out.toByteArray());
+            } catch (IOException e) {
+                throw new IllegalArgumentException("文件不存在", e);
+            }
+        }
         if (key == null || !key.matches("[0-9a-f-]{36}")) {
             throw new IllegalArgumentException("文件不存在");
         }
@@ -95,7 +162,9 @@ public class FileStore {
     }
 
     public void delete(String key) throws IOException {
-        if (key != null && key.matches("[0-9a-f-]{36}")) {
+        if (isCosKey(key) && cosClient != null) {
+            cosClient.deleteObject(bucket, key.substring(4));
+        } else if (key != null && key.matches("[0-9a-f-]{36}")) {
             Files.deleteIfExists(root.resolve(key));
         }
     }

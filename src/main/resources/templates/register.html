@@ -1,19 +1,17 @@
 <!DOCTYPE html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
-    <head th:replace="~{layout :: head('注册')}">
-    </head>
+    <head th:replace="~{layout :: head('注册个人账号')}"></head>
     <body class="auth-page">
-        <main>
-            <h1>
-                注册个人账号
-            </h1>
+        <main class="auth-card">
+            <div class="auth-brand"><span class="brand-mark">✦</span><span><strong>奥拉星怀旧社区</strong><small>创建个人空间</small></span></div>
+            <h1>注册个人账号</h1>
+            <p class="auth-lead">创建账号后，你可以发布内容、收藏资源并和伙伴交流。</p>
             <form th:action="@{/register}" method="post">
-                <label>用户名（3–40位字母、数字或下划线）<input name="username" pattern="[A-Za-z0-9_]{3,40}" required></label>
-                <label>密码（8–72位）<input type="password" name="password" minlength="8" maxlength="72" required></label>
-                <button>注册</button>
+                <label>用户名<input name="username" pattern="[A-Za-z0-9_]{3,40}" required autocomplete="username" placeholder="3–40位字母、数字或下划线"></label>
+                <label>密码<input type="password" name="password" minlength="8" maxlength="72" required autocomplete="new-password" placeholder="8–72位密码"></label>
+                <button class="auth-submit" type="submit">创建个人账号</button>
             </form>
-            <a th:href="@{/login}">返回登录</a>
+            <p class="auth-footer">已有账号？<a th:href="@{/login}">返回登录</a></p>
         </main>
     </body>
 </html>
-

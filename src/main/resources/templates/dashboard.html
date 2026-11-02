@@ -1,43 +1,33 @@
 <!DOCTYPE html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
-    <head th:replace="~{layout :: head('个人仪表盘')}">
-    </head>
+    <head th:replace="~{layout :: head('个人仪表盘')}"></head>
     <body>
-        <nav th:replace="~{layout :: nav}">
-        </nav>
+        <nav th:replace="~{layout :: nav}"></nav>
         <main>
-            <h1>
-                个人仪表盘
-            </h1>
-            <p>
-                欢迎回来，<span th:text="${currentUser.username}"></span>
-            </p>
+            <h1>个人仪表盘</h1>
+            <p>欢迎回来，<span th:text="${currentUser.username}"></span></p>
             <section>
                 <div class="section-header"><h2>我的内容</h2><span class="badge">持续更新</span></div>
                 <div class="stats-grid">
                     <div class="stat-card"><span class="stat-label">博客</span><strong class="stat-number" th:text="${blogCount}"></strong></div>
                     <div class="stat-card"><span class="stat-label">视频</span><strong class="stat-number" th:text="${videoCount}"></strong></div>
                 </div>
-                <div class="actions" style="margin-top: 1rem"><a class="btn" th:href="@{/posts/new(kind='BLOG')}">发布博客</a><a class="btn btn-secondary" th:href="@{/posts/new(kind='VIDEO')}">发布视频</a></div>
+                <div class="actions" style="margin-top: 1rem"><a class="btn" th:href="@{/posts/new(kind='BLOG')}"><i class="fa fa-pencil-square-o"></i> 发布博客</a><a class="btn btn-secondary" th:href="@{/posts/new(kind='VIDEO')}"><i class="fa fa-video-camera"></i> 发布视频</a><a class="btn btn-secondary" th:href="@{/works}"><i class="fa fa-folder-open-o"></i> 个人作品</a></div>
             </section>
             <section>
                 <div class="section-header"><h2>最近评论</h2><span class="muted">来自内容库的最新回应</span></div>
                 <ul>
-                    <li th:each="c : ${recentComments}">
-                        <a th:href="@{/posts/{id}(id=${c.post.id})}" th:text="${c.post.title}"></a>　<span th:text="${c.author.username}"></span>：<span th:text="${c.body}"></span>
-                    </li>
+                    <li th:each="c : ${recentComments}"><a th:href="@{/posts/{id}(id=${c.post.id})}" th:text="${c.post.title}"></a>　<span th:text="${c.author.username}"></span>：<span th:text="${c.body}"></span> <time class="muted" th:datetime="${c.createdAt}" th:text="${#temporals.format(c.createdAt, 'yyyy-MM-dd HH:mm')}"></time></li>
                 </ul>
-                <p th:if="${#lists.isEmpty(recentComments)}">
-                    暂无评论
-                </p>
+                <p th:if="${#lists.isEmpty(recentComments)}">暂无评论</p>
             </section>
             <section>
                 <div class="section-header"><h2>最近五次登录</h2><span class="muted">账号活动</span></div>
-                <ul>
-                    <li th:each="log : ${logs}" th:text="${#temporals.format(log.loggedAt, 'yyyy-MM-dd HH:mm:ss')}">
-                    </li>
-                </ul>
+                <ul><li th:each="log : ${logs}" th:text="${#temporals.format(log.loggedAt, 'yyyy-MM-dd HH:mm:ss')}"></li></ul>
             </section>
         </main>
+        <script th:if="${showLoginWelcome}">
+            alert("这里是Aola Star Lab，是一个奥拉星怀旧社区网站，目前包括发布文章、发布视频、资源下载等功能，后续会持续更新，感谢大家的支持！开发者：Jasonare");
+        </script>
     </body>
 </html>
