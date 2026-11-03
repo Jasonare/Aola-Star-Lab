@@ -34,7 +34,8 @@ app:
   storage: '${APP_STORAGE:./data/uploads}'
   video-storage: '${APP_VIDEO_STORAGE:./data/vedios}'
   cos:
-    enabled: false
+    enabled: true
+    image-required: true
     bucket: aola-star-hub-1350639287
     region: ap-shanghai
     secret-id: ''

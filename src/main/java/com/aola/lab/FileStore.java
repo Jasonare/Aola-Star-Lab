@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Date;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,6 +37,7 @@ public class FileStore {
     private final Path videoRoot;
     private final COSClient cosClient;
     private final String bucket;
+    private final boolean imageCosRequired;
 
     public FileStore(@Value("${app.storage}") String location,
             @Value("${app.video-storage:./data/vedios}") String videoLocation,
@@ -43,12 +45,17 @@ public class FileStore {
             @Value("${app.cos.bucket:aola-star-hub-1350639287}") String bucket,
             @Value("${app.cos.region:ap-shanghai}") String region,
             @Value("${app.cos.secret-id:}") String secretId,
-            @Value("${app.cos.secret-key:}") String secretKey) throws IOException {
+            @Value("${app.cos.secret-key:}") String secretKey,
+            @Value("${app.cos.image-required:true}") boolean imageCosRequired) throws IOException {
         root = Paths.get(location).toAbsolutePath().normalize();
         Files.createDirectories(root);
         videoRoot = Paths.get(videoLocation).toAbsolutePath().normalize();
         Files.createDirectories(videoRoot);
         this.bucket = bucket;
+        this.imageCosRequired = imageCosRequired;
+        if (imageCosRequired && !cosEnabled) {
+            throw new IllegalStateException("文章图片必须上传到 COS，请启用 app.cos.enabled 并配置访问凭据");
+        }
         if (cosEnabled) {
             if (secretId.isBlank() || secretKey.isBlank()) {
                 throw new IllegalStateException("COS 已启用，但缺少 SecretId 或 SecretKey 配置");
@@ -127,6 +134,9 @@ public class FileStore {
         boolean localVideo = category.equals("video");
         boolean useCos = !localVideo && cosClient != null
                 && (category.equals("image") || category.equals("resource"));
+        if (category.equals("image") && imageCosRequired && !useCos) {
+            throw new IllegalStateException("文章图片必须上传到 COS，当前 COS 客户端不可用");
+        }
         String objectKey = objectKey(id, ext);
         String key = useCos ? "cos/" + objectKey : localVideo ? "video/" + objectKey : id;
         if (!useCos) {
@@ -138,6 +148,9 @@ public class FileStore {
             ObjectMetadata metadata = new ObjectMetadata();
             metadata.setContentLength(file.getSize());
             metadata.setContentType(type);
+            if (category.equals("image")) {
+                metadata.setCacheControl("public, max-age=31536000, immutable");
+            }
             try (InputStream in = file.getInputStream()) {
                 cosClient.putObject(new PutObjectRequest(bucket, objectKey, in, metadata));
             }
@@ -248,6 +261,14 @@ public class FileStore {
             throw new IllegalArgumentException("文件不存在");
         }
         return new FileSystemResource(path);
+    }
+
+    public Optional<String> temporaryUrl(String key, int lifetimeSeconds) {
+        if (!isCosKey(key) || cosClient == null || lifetimeSeconds <= 0) {
+            return Optional.empty();
+        }
+        Date expiration = new Date(System.currentTimeMillis() + lifetimeSeconds * 1000L);
+        return Optional.of(cosClient.generatePresignedUrl(bucket, key.substring(4), expiration).toString());
     }
 
     public void delete(String key) throws IOException {

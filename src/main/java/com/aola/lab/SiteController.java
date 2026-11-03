@@ -326,6 +326,16 @@ public class SiteController {
         User viewer = current(auth);
         service.incrementView(post, viewer);
         model.addAttribute("post", post);
+        boolean publiclyCacheableImages = post.getReview() == Review.APPROVED
+                && post.getVisibility() == Visibility.PUBLIC;
+        List<String> imageUrls = new ArrayList<>();
+        for (int index = 0; index < post.getImageKeys().size(); index++) {
+            String key = post.getImageKeys().get(index);
+            String imageUrl = publiclyCacheableImages
+                    ? files.temporaryUrl(key, 1800).orElse(null) : null;
+            imageUrls.add(imageUrl == null ? "/posts/" + post.getId() + "/images/" + index : imageUrl);
+        }
+        model.addAttribute("imageUrls", imageUrls);
         model.addAttribute("postDateLabel", postDateLabel(post));
         model.addAttribute("likeCount", postLikes.countByPost(post));
         model.addAttribute("commentCount", comments.countByPost(post));
@@ -444,7 +454,7 @@ public class SiteController {
         }
         String key = post.getImageKeys().get(index);
         return ResponseEntity.ok()
-                .cacheControl(CacheControl.noStore())
+                .cacheControl(CacheControl.maxAge(1, java.util.concurrent.TimeUnit.HOURS).cachePrivate())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
                 .contentType(MediaType.parseMediaType(post.getImageTypes().get(index)))
                 .body(files.load(key));

@@ -44,6 +44,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.password=",
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "app.cos.enabled=false",
+        "app.cos.image-required=false",
         "app.storage=./target/test-uploads",
         "app.video-storage=./target/test-videos"
 })

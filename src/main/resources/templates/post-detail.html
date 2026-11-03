@@ -34,7 +34,7 @@
                 </form>
                 <p style="white-space: pre-wrap" th:text="${post.body}">
                 </p>
-                <div class="article-gallery" th:if="${post.kind.name() == 'BLOG' and !#lists.isEmpty(post.imageKeys)}"><a class="image-tile image-lightbox-link" th:each="image, stat : ${post.imageKeys}" th:href="@{/posts/{id}/images/{index}(id=${post.id},index=${stat.index})}" target="_blank" rel="noopener" aria-label="查看文章原图"><img th:src="@{/posts/{id}/images/{index}(id=${post.id},index=${stat.index})}" alt="文章图片"></a></div>
+                <div class="article-gallery" th:if="${post.kind.name() == 'BLOG' and !#lists.isEmpty(post.imageKeys)}"><a class="image-tile image-lightbox-link" th:each="imageUrl, stat : ${imageUrls}" th:href="${imageUrl}" target="_blank" rel="noopener" aria-label="查看文章原图"><img th:src="${imageUrl}" alt="文章图片" loading="lazy" decoding="async"></a></div>
                 <video th:if="${post.fileKey != null and post.kind.name() == 'VIDEO'}" controls preload="metadata" th:src="@{/posts/{id}/file(id=${post.id})}"></video>
                 <p class="post-edit-actions" th:if="${post.author.id == currentUser.id}">
                     <a class="btn edit-resubmit-button" th:href="@{/posts/{id}/edit(id=${post.id})}"><i class="fa fa-pencil-square-o" aria-hidden="true"></i> 修改并重新提交</a>
