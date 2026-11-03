@@ -113,7 +113,7 @@ public class Model {
         private String name;
     }
 
-    @Entity
+    @Entity(name = "Post")
     @Table(name = "posts")
     @Getter
     @Setter
@@ -152,6 +152,9 @@ public class Model {
         @Column(length = 100)
         private String fileType;
 
+        @Column(nullable = false)
+        private long viewCount;
+
         @ElementCollection
         @CollectionTable(name = "post_images", joinColumns = @JoinColumn(name = "post_id"))
         @Column(name = "file_key", length = 100)
@@ -163,7 +166,9 @@ public class Model {
         private java.util.List<String> imageTypes = new java.util.ArrayList<>();
 
         @ManyToMany
-        @JoinTable(name = "post_tags")
+        @JoinTable(name = "post_tags",
+                joinColumns = @JoinColumn(name = "model$post_id"),
+                inverseJoinColumns = @JoinColumn(name = "tags_id"))
         private Set<Tag> tags = new HashSet<>();
 
         @Column(nullable = false, updatable = false)
@@ -181,6 +186,27 @@ public class Model {
                 updatedAt = createdAt;
             }
         }
+    }
+
+    @Entity
+    @Table(name = "post_likes", uniqueConstraints = @UniqueConstraint(columnNames = {"post_id", "user_id"}))
+    @Getter
+    @Setter
+    public static class PostLike {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @ManyToOne(optional = false)
+        @JoinColumn(name = "post_id")
+        private Post post;
+
+        @ManyToOne(optional = false)
+        @JoinColumn(name = "user_id")
+        private User user;
+
+        @Column(nullable = false)
+        private LocalDateTime createdAt = LocalDateTime.now();
     }
 
     @Entity

@@ -13,6 +13,7 @@ import com.aola.lab.Repositories.Comments;
 import com.aola.lab.Repositories.Folders;
 import com.aola.lab.Repositories.Friendships;
 import com.aola.lab.Repositories.Logs;
+import com.aola.lab.Repositories.PostLikes;
 import com.aola.lab.Repositories.Posts;
 import com.aola.lab.Repositories.Resources;
 import com.aola.lab.Repositories.Tags;
@@ -20,12 +21,16 @@ import com.aola.lab.Repositories.Users;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Locale;
 import java.util.NoSuchElementException;
+
+import org.springframework.core.io.Resource;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -41,11 +46,14 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
 
 @Controller
 public class SiteController {
+    private static final Pattern BYTE_RANGE_PATTERN = Pattern.compile("bytes=(\\d*)-(\\d*)");
+
     private final LabService service;
     private final Users users;
     private final Logs logs;
@@ -53,12 +61,13 @@ public class SiteController {
     private final Posts posts;
     private final Tags tags;
     private final Comments comments;
+    private final PostLikes postLikes;
     private final Folders folders;
     private final Resources resources;
     private final FileStore files;
 
     public SiteController(LabService service, Users users, Logs logs, Friendships friends, Posts posts, Tags tags,
-            Comments comments, Folders folders, Resources resources, FileStore files) {
+            Comments comments, PostLikes postLikes, Folders folders, Resources resources, FileStore files) {
         this.service = service;
         this.users = users;
         this.logs = logs;
@@ -66,6 +75,7 @@ public class SiteController {
         this.posts = posts;
         this.tags = tags;
         this.comments = comments;
+        this.postLikes = postLikes;
         this.folders = folders;
         this.resources = resources;
         this.files = files;
@@ -106,6 +116,11 @@ public class SiteController {
         }
         model.addAttribute("blogCount", posts.countByAuthorAndKind(user, Kind.BLOG));
         model.addAttribute("videoCount", posts.countByAuthorAndKind(user, Kind.VIDEO));
+        model.addAttribute("totalViews", posts.findByAuthorAndKindOrderByUpdatedAtDesc(user, Kind.BLOG).stream()
+                .mapToLong(Post::getViewCount).sum()
+                + posts.findByAuthorAndKindOrderByUpdatedAtDesc(user, Kind.VIDEO).stream()
+                        .mapToLong(Post::getViewCount).sum());
+        model.addAttribute("totalLikes", postLikes.countByPostAuthor(user));
         model.addAttribute("recentComments", comments.findTop5ByPostAuthorOrderByCreatedAtDesc(user));
         model.addAttribute("logs", logs.findTop5ByUserOrderByLoggedAtDescIdDesc(user));
         return "dashboard";
@@ -118,6 +133,10 @@ public class SiteController {
         model.addAttribute("works", userWorks);
         model.addAttribute("postDates", userWorks.stream().collect(java.util.stream.Collectors.toMap(
                 Post::getId, this::postDateLabel)));
+        model.addAttribute("likeCounts", userWorks.stream().collect(java.util.stream.Collectors.toMap(
+                Post::getId, postLikes::countByPost)));
+        model.addAttribute("commentCounts", userWorks.stream().collect(java.util.stream.Collectors.toMap(
+                Post::getId, comments::countByPost)));
         model.addAttribute("selectedKind", kind);
         return "works";
     }
@@ -176,6 +195,10 @@ public class SiteController {
         model.addAttribute("posts", visiblePosts);
         model.addAttribute("postDates", visiblePosts.stream().collect(java.util.stream.Collectors.toMap(
                 Post::getId, this::postDateLabel)));
+        model.addAttribute("likeCounts", visiblePosts.stream().collect(java.util.stream.Collectors.toMap(
+                Post::getId, postLikes::countByPost)));
+        model.addAttribute("commentCounts", visiblePosts.stream().collect(java.util.stream.Collectors.toMap(
+                Post::getId, comments::countByPost)));
         model.addAttribute("tags", tags.findAll());
         model.addAttribute("query", q);
         model.addAttribute("selectedTag", tag);
@@ -259,14 +282,25 @@ public class SiteController {
     @GetMapping("/posts/{id}")
     public String detail(Authentication auth, @PathVariable Long id, Model model) {
         Post post = service.visiblePost(current(auth), id);
+        service.incrementView(post);
+        User viewer = current(auth);
         model.addAttribute("post", post);
         model.addAttribute("postDateLabel", postDateLabel(post));
+        model.addAttribute("likeCount", postLikes.countByPost(post));
+        model.addAttribute("commentCount", comments.countByPost(post));
+        model.addAttribute("liked", postLikes.existsByPostAndUser(post, viewer));
         List<Comment> topLevelComments = comments.findByPostAndParentIsNullOrderByCreatedAtDesc(post);
         for (Comment comment : topLevelComments) {
             comment.setReplies(comments.findByParentOrderByCreatedAtAsc(comment));
         }
         model.addAttribute("comments", topLevelComments);
         return "post-detail";
+    }
+
+    @PostMapping("/posts/{id}/like")
+    public String like(Authentication auth, @PathVariable Long id) {
+        service.toggleLike(current(auth), id);
+        return "redirect:/posts/" + id;
     }
 
     @PostMapping("/posts/{id}/comments")
@@ -290,41 +324,87 @@ public class SiteController {
     }
 
     @GetMapping("/posts/{id}/file")
-    public ResponseEntity<org.springframework.core.io.Resource> postFile(Authentication auth, @PathVariable Long id) {
+    public ResponseEntity<Resource> postFile(Authentication auth, @PathVariable Long id,
+            @RequestHeader(value = HttpHeaders.RANGE, required = false) String rangeHeader) throws IOException {
         Post post = service.visiblePost(current(auth), id);
         if (post.getFileKey() == null) {
             throw new IllegalArgumentException("文件不存在");
         }
-        if (files.url(post.getFileKey()) != null) {
-            return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+        Resource file = files.load(post.getFileKey());
+        long length = file.contentLength();
+        String fileType = post.getFileType();
+        if (!"video/mp4".equalsIgnoreCase(fileType) || rangeHeader == null) {
+            return ResponseEntity.ok()
+                    .cacheControl(CacheControl.noStore())
                     .header("X-Content-Type-Options", "nosniff")
+                    .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                    .header(HttpHeaders.CONTENT_LENGTH, Long.toString(length))
                     .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
-                    .contentType(MediaType.parseMediaType(post.getFileType()))
-                    .body(files.load(post.getFileKey()));
+                    .contentType(MediaType.parseMediaType(fileType))
+                    .body(file);
         }
-        return ResponseEntity.ok()
+        Matcher matcher = BYTE_RANGE_PATTERN.matcher(rangeHeader.trim());
+        if (!matcher.matches() || rangeHeader.contains(",")) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                    .header(HttpHeaders.CONTENT_RANGE, "bytes */" + length)
+                    .build();
+        }
+        long start;
+        long end;
+        try {
+            String requestedStart = matcher.group(1);
+            String requestedEnd = matcher.group(2);
+            if (requestedStart.isEmpty() && requestedEnd.isEmpty()) {
+                throw new NumberFormatException("Empty byte range");
+            }
+            if (requestedStart.isEmpty()) {
+                long suffixLength = Long.parseLong(requestedEnd);
+                if (suffixLength <= 0) {
+                    throw new NumberFormatException("Invalid suffix range");
+                }
+                start = Math.max(0, length - suffixLength);
+                end = length - 1;
+            } else {
+                start = Long.parseLong(requestedStart);
+                end = requestedEnd.isEmpty() ? length - 1 : Long.parseLong(requestedEnd);
+            }
+        } catch (NumberFormatException e) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                    .header(HttpHeaders.CONTENT_RANGE, "bytes */" + length)
+                    .build();
+        }
+        if (length == 0 || start >= length || start > end) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                    .header(HttpHeaders.CONTENT_RANGE, "bytes */" + length)
+                    .build();
+        }
+        end = Math.min(end, length - 1);
+        byte[] content;
+        try (var input = file.getInputStream()) {
+            input.skipNBytes(start);
+            content = input.readNBytes(Math.toIntExact(end - start + 1));
+        }
+        return ResponseEntity.status(org.springframework.http.HttpStatus.PARTIAL_CONTENT)
                 .cacheControl(CacheControl.noStore())
                 .header("X-Content-Type-Options", "nosniff")
+                .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                .header(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + length)
+                .header(HttpHeaders.CONTENT_LENGTH, Integer.toString(content.length))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
-                .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                .contentType(MediaType.parseMediaType(post.getFileType()))
-                .body(files.load(post.getFileKey()));
+                .contentType(MediaType.parseMediaType(fileType))
+                .body(new org.springframework.core.io.ByteArrayResource(content));
     }
 
     @GetMapping("/posts/{id}/images/{index}")
-    public ResponseEntity<org.springframework.core.io.Resource> postImage(Authentication auth, @PathVariable Long id, @PathVariable int index) {
+    public ResponseEntity<Resource> postImage(Authentication auth, @PathVariable Long id, @PathVariable int index) {
         Post post = service.visiblePost(current(auth), id);
         if (index < 0 || index >= post.getImageKeys().size()) {
             throw new IllegalArgumentException("图片不存在");
         }
         String key = post.getImageKeys().get(index);
-        if (files.url(key) != null) {
-            return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
-                    .contentType(MediaType.parseMediaType(post.getImageTypes().get(index)))
-                    .body(files.load(key));
-        }
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
                 .contentType(MediaType.parseMediaType(post.getImageTypes().get(index)))
                 .body(files.load(key));
     }
@@ -346,20 +426,10 @@ public class SiteController {
     }
 
     @GetMapping("/resources/{id}/file")
-    public ResponseEntity<org.springframework.core.io.Resource> resourceFile(Authentication auth, @PathVariable Long id) {
+    public ResponseEntity<Resource> resourceFile(Authentication auth, @PathVariable Long id) {
         ResourceFile resource = resources.findById(id).orElseThrow();
         if (!resource.isVisible() && !current(auth).isAdmin()) {
             throw new AccessDeniedException("无权访问");
-        }
-        if (files.url(resource.getFileKey()) != null) {
-            return ResponseEntity.ok()
-                    .cacheControl(CacheControl.noStore())
-                    .header("X-Content-Type-Options", "nosniff")
-                    .header(HttpHeaders.CONTENT_DISPOSITION,
-                            ContentDisposition.attachment().filename(resource.getName(), StandardCharsets.UTF_8)
-                                    .build().toString())
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                    .body(files.load(resource.getFileKey()));
         }
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
@@ -471,8 +541,7 @@ public class SiteController {
     }
 
     @PostMapping("/admin/resources")
-    public String resource(@RequestParam Long folderId, @RequestParam MultipartFile file,
-            @RequestParam(defaultValue = "false") boolean visible) throws IOException {
+    public String resource(@RequestParam Long folderId, @RequestParam MultipartFile file) throws IOException {
         Folder folder = folders.findById(folderId).orElseThrow();
         FileStore.Stored saved = files.save(file, "resource");
         try {
@@ -481,7 +550,7 @@ public class SiteController {
             resource.setName(file.getOriginalFilename());
             resource.setFileKey(saved.key());
             resource.setFileType(saved.type());
-            resource.setVisible(visible);
+            resource.setVisible(true);
             resources.save(resource);
         } catch (RuntimeException e) {
             files.delete(saved.key());

@@ -4,7 +4,7 @@
     <body>
         <nav th:replace="~{layout :: nav}"></nav>
         <main>
-            <div class="page-heading"><div><p class="eyebrow">创作台</p><h1 th:text="${post.kind.name() == 'BLOG' ? '发布文章' : '发布视频'}"></h1><p class="muted" th:text="${post.kind.name() == 'BLOG' ? '上传最多9张图片，发布前可预览。' : '上传一个MP4视频，提交后进入审核。'}"></p></div></div>
+            <div class="page-heading"><div><p class="eyebrow">创作台</p><h1 th:text="${post.kind.name() == 'BLOG' ? '发布文章' : '发布视频'}"></h1><p class="muted" th:text="${post.kind.name() == 'BLOG' ? '上传最多9张图片，发布前可预览。' : '上传一个 MP4 视频，提交后进入审核。建议使用 H.264 视频和 AAC 音频编码；其他编码可能无法在浏览器播放。'}"></p></div></div>
             <section class="editor-panel">
                 <form th:action="@{/posts/save(_csrf=${_csrf.token})}" method="post" enctype="multipart/form-data">
                     <input type="hidden" name="id" th:value="${post.id}"><input type="hidden" name="kind" th:value="${post.kind}">
@@ -14,6 +14,20 @@
                     <fieldset><legend>标签</legend><div class="tag-picker"><label th:each="tag : ${tags}"><input type="checkbox" name="tagIds" th:value="${tag.id}" th:checked="${selectedTagIds.contains(tag.id)}"><span th:text="${tag.name}"></span></label></div></fieldset>
                     <label th:text="${post.kind.name() == 'BLOG' ? '文章图片（PNG、JPEG、WebP，最多9张）' : '视频文件（MP4）'}"></label>
                     <input id="media-files" type="file" name="files" th:multiple="${post.kind.name() == 'BLOG'}" th:accept="${post.kind.name() == 'BLOG' ? 'image/png,image/jpeg,image/webp' : 'video/mp4'}">
+                    <div class="existing-media" th:if="${post.kind.name() == 'BLOG' and !#lists.isEmpty(post.imageKeys)}">
+                        <p class="field-label">当前文章图片</p>
+                        <div class="image-preview">
+                            <img th:each="imageKey, stat : ${post.imageKeys}"
+                                    th:src="@{/posts/{id}/images/{index}(id=${post.id},index=${stat.index})}"
+                                    alt="已上传的文章图片">
+                        </div>
+                    </div>
+                    <div class="existing-media" th:if="${post.kind.name() == 'VIDEO' and post.fileKey != null}">
+                        <p class="field-label">当前视频</p>
+                        <div class="video-frame editor-video-frame">
+                            <video controls preload="metadata" th:src="@{/posts/{id}/file(id=${post.id})}" aria-label="当前已上传视频"></video>
+                        </div>
+                    </div>
                     <div id="image-preview" class="image-preview" aria-live="polite"></div>
                     <button type="submit" th:text="${post.id == null ? '提交发布' : '保存并重新提交'}"></button>
                 </form>
@@ -25,8 +39,31 @@
             mediaInput?.addEventListener('change', () => {
                 preview.innerHTML = '';
                 const files = Array.from(mediaInput.files || []);
-                if (files.length > 9) { mediaInput.value = ''; preview.innerHTML = '<p class="error">文章最多选择9张图片。</p>'; return; }
-                files.forEach((file) => { if (!file.type.startsWith('image/')) return; const img = document.createElement('img'); img.alt = file.name; img.src = URL.createObjectURL(file); preview.appendChild(img); });
+                if (files.length > 9 && mediaInput.multiple) {
+                    mediaInput.value = '';
+                    preview.innerHTML = '<p class="error">文章最多选择9张图片。</p>';
+                    return;
+                }
+                if (mediaInput.accept === 'video/mp4') {
+                    const file = files[0];
+                    if (!file) return;
+                    const video = document.createElement('video');
+                    video.controls = true;
+                    video.preload = 'metadata';
+                    video.src = URL.createObjectURL(file);
+                    video.setAttribute('aria-label', file.name);
+                    preview.classList.add('video-file-preview');
+                    preview.appendChild(video);
+                    return;
+                }
+                preview.classList.remove('video-file-preview');
+                files.forEach((file) => {
+                    if (!file.type.startsWith('image/')) return;
+                    const img = document.createElement('img');
+                    img.alt = file.name;
+                    img.src = URL.createObjectURL(file);
+                    preview.appendChild(img);
+                });
             });
         </script>
     </body>

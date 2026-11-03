@@ -1,8 +1,9 @@
 package com.aola.lab;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -32,29 +33,29 @@ public class FileStore {
     }
 
     private final Path root;
+    private final Path videoRoot;
     private final COSClient cosClient;
     private final String bucket;
-    private final String baseUrl;
 
     public FileStore(@Value("${app.storage}") String location,
+            @Value("${app.video-storage:./data/vedios}") String videoLocation,
             @Value("${app.cos.enabled:false}") boolean cosEnabled,
             @Value("${app.cos.bucket:aola-star-hub-1350639287}") String bucket,
             @Value("${app.cos.region:ap-shanghai}") String region,
-            @Value("${app.cos.base-url:https://aola-star-hub-1350639287.cos.ap-shanghai.myqcloud.com/}") String baseUrl,
             @Value("${app.cos.secret-id:}") String secretId,
             @Value("${app.cos.secret-key:}") String secretKey) throws IOException {
         root = Paths.get(location).toAbsolutePath().normalize();
         Files.createDirectories(root);
+        videoRoot = Paths.get(videoLocation).toAbsolutePath().normalize();
+        Files.createDirectories(videoRoot);
         this.bucket = bucket;
-        this.baseUrl = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
         if (cosEnabled) {
             if (secretId.isBlank() || secretKey.isBlank()) {
-                cosClient = null;
-            } else {
-                COSCredentials credentials = new BasicCOSCredentials(secretId, secretKey);
-                ClientConfig config = new ClientConfig(new Region(region));
-                cosClient = new COSClient(credentials, config);
+                throw new IllegalStateException("COS 已启用，但缺少 SecretId 或 SecretKey 配置");
             }
+            COSCredentials credentials = new BasicCOSCredentials(secretId, secretKey);
+            ClientConfig config = new ClientConfig(new Region(region));
+            cosClient = new COSClient(credentials, config);
         } else {
             cosClient = null;
         }
@@ -67,12 +68,12 @@ public class FileStore {
         }
     }
 
-    public String url(String key) {
-        return isCosKey(key) ? baseUrl + key.substring(4) : null;
-    }
-
     private boolean isCosKey(String key) {
         return key != null && key.startsWith("cos/") && key.length() > 4;
+    }
+
+    static String objectKey(String id, String extension) {
+        return id + (extension.isEmpty() ? "" : "." + extension);
     }
 
     public Stored save(MultipartFile file, String category) throws IOException {
@@ -88,6 +89,7 @@ public class FileStore {
         try (InputStream in = file.getInputStream()) {
             head = in.readNBytes(16);
         }
+        boolean validMp4 = ext.equals("mp4") && hasValidMp4Structure(file);
         // 根据文件头校验扩展名对应的类型。
         String type = switch (ext) {
             case "png" -> starts(head, new int[]{137, 80, 78, 71, 13, 10, 26, 10}) ? "image/png" : null;
@@ -95,7 +97,7 @@ public class FileStore {
             case "webp" -> head.length >= 12 && starts(head, new int[]{82, 73, 70, 70})
                     && head[8] == 'W' && head[9] == 'E' && head[10] == 'B' && head[11] == 'P'
                     ? "image/webp" : null;
-            case "mp4" -> head.length >= 12 && head[4] == 'f' && head[5] == 't'
+            case "mp4" -> validMp4 && head.length >= 12 && head[4] == 'f' && head[5] == 't'
                     && head[6] == 'y' && head[7] == 'p' ? "video/mp4" : null;
             case "pdf" -> starts(head, new int[]{37, 80, 68, 70, 45}) ? "application/pdf" : null;
             case "zip" -> starts(head, new int[]{80, 75, 3, 4}) || starts(head, new int[]{80, 75, 5, 6})
@@ -110,10 +112,13 @@ public class FileStore {
             throw new IllegalArgumentException("不支持的文件类型或文件内容不匹配");
         }
         String id = UUID.randomUUID().toString();
-        boolean useCos = cosClient != null && (category.equals("image") || category.equals("video") || category.equals("resource"));
-        String key = useCos ? "cos/" + id : id;
+        boolean localVideo = category.equals("video");
+        boolean useCos = !localVideo && cosClient != null
+                && (category.equals("image") || category.equals("resource"));
+        String objectKey = objectKey(id, ext);
+        String key = useCos ? "cos/" + objectKey : localVideo ? "video/" + objectKey : id;
         if (!useCos) {
-            Path target = root.resolve(key);
+            Path target = localVideo ? videoRoot.resolve(objectKey) : root.resolve(key);
             try (InputStream in = file.getInputStream()) {
                 Files.copy(in, target);
             }
@@ -122,10 +127,54 @@ public class FileStore {
             metadata.setContentLength(file.getSize());
             metadata.setContentType(type);
             try (InputStream in = file.getInputStream()) {
-                cosClient.putObject(new PutObjectRequest(bucket, id, in, metadata));
+                cosClient.putObject(new PutObjectRequest(bucket, objectKey, in, metadata));
             }
         }
         return new Stored(key, type);
+    }
+
+    private boolean hasValidMp4Structure(MultipartFile file) throws IOException {
+        boolean hasMovie = false;
+        boolean hasMedia = false;
+        boolean firstBox = true;
+        long remaining = file.getSize();
+        try (DataInputStream input = new DataInputStream(file.getInputStream())) {
+            while (remaining >= 8) {
+                long size = Integer.toUnsignedLong(input.readInt());
+                byte[] typeBytes = input.readNBytes(4);
+                if (typeBytes.length != 4) {
+                    return false;
+                }
+                remaining -= 8;
+                String boxType = new String(typeBytes, java.nio.charset.StandardCharsets.US_ASCII);
+                long headerSize = 8;
+                if (size == 1) {
+                    if (remaining < 8) {
+                        return false;
+                    }
+                    size = input.readLong();
+                    remaining -= 8;
+                    headerSize = 16;
+                } else if (size == 0) {
+                    size = remaining + headerSize;
+                }
+                if (size < headerSize || size - headerSize > remaining) {
+                    return false;
+                }
+                if ((firstBox && !"ftyp".equals(boxType)) || ("ftyp".equals(boxType) && headerSize != 8)) {
+                    return false;
+                }
+                firstBox = false;
+                hasMovie |= "moov".equals(boxType);
+                hasMedia |= "mdat".equals(boxType);
+                long payload = size - headerSize;
+                input.skipNBytes(payload);
+                remaining -= payload;
+            }
+            return remaining == 0 && hasMovie && hasMedia;
+        } catch (IOException | RuntimeException exception) {
+            return false;
+        }
     }
 
     private boolean starts(byte[] data, int[] signature) {
@@ -151,6 +200,14 @@ public class FileStore {
                 throw new IllegalArgumentException("文件不存在", e);
             }
         }
+        if (key != null && key.matches("video/[0-9a-f-]{36}\\.mp4")) {
+            Path videoPath = videoRoot.resolve(key.substring(6)).normalize();
+            if (!videoPath.getParent().equals(videoRoot)
+                    || !Files.isRegularFile(videoPath, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IllegalArgumentException("文件不存在");
+            }
+            return new FileSystemResource(videoPath);
+        }
         if (key == null || !key.matches("[0-9a-f-]{36}")) {
             throw new IllegalArgumentException("文件不存在");
         }
@@ -164,6 +221,11 @@ public class FileStore {
     public void delete(String key) throws IOException {
         if (isCosKey(key) && cosClient != null) {
             cosClient.deleteObject(bucket, key.substring(4));
+        } else if (key != null && key.matches("video/[0-9a-f-]{36}\\.mp4")) {
+            Path videoPath = videoRoot.resolve(key.substring(6)).normalize();
+            if (videoPath.getParent().equals(videoRoot)) {
+                Files.deleteIfExists(videoPath);
+            }
         } else if (key != null && key.matches("[0-9a-f-]{36}")) {
             Files.deleteIfExists(root.resolve(key));
         }

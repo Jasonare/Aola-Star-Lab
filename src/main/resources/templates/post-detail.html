@@ -19,6 +19,19 @@
                 <p>
                     <span th:each="tag : ${post.tags}" th:text="${tag.name} + ' '"></span>
                 </p>
+                <p class="post-meta">
+                    浏览 <span th:text="${post.viewCount}"></span><span class="dot-sep">·</span>
+                    点赞 <span th:text="${likeCount}"></span><span class="dot-sep">·</span>
+                    评论 <span th:text="${commentCount}"></span>
+                </p>
+                <form th:if="${post.review.name() == 'APPROVED'}"
+                      th:action="@{/posts/{id}/like(id=${post.id})}"
+                      method="post">
+                    <button type="submit" class="btn btn-secondary">
+                        <i class="fa fa-heart" aria-hidden="true"></i>
+                        <span th:text="${liked ? '取消点赞' : '点赞'}"></span>
+                    </button>
+                </form>
                 <p style="white-space: pre-wrap" th:text="${post.body}">
                 </p>
                 <div class="article-gallery" th:if="${post.kind.name() == 'BLOG' and !#lists.isEmpty(post.imageKeys)}"><img th:each="image, stat : ${post.imageKeys}" th:src="@{/posts/{id}/images/{index}(id=${post.id},index=${stat.index})}" alt="文章图片"></div>
@@ -27,7 +40,7 @@
                     <a class="btn edit-resubmit-button" th:href="@{/posts/{id}/edit(id=${post.id})}"><i class="fa fa-pencil-square-o" aria-hidden="true"></i> 修改并重新提交</a>
                 </p>
             </article>
-            <section class="comment-section" id="comments" th:if="${post.kind.name() == 'BLOG' and post.review.name() == 'APPROVED'}">
+            <section class="comment-section" id="comments" th:if="${post.review.name() == 'APPROVED'}">
                 <div class="section-header"><div><p class="eyebrow">DISCUSSION</p><h2>评论与讨论</h2></div><span class="muted" th:text="${#lists.size(comments)} + ' 条评论'"></span></div>
                 <div class="comment-list">
                     <div class="empty" th:if="${#lists.isEmpty(comments)}">还没有评论，来说说你的想法吧。</div>

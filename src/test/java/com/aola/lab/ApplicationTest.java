@@ -41,7 +41,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.password=",
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "app.cos.enabled=false",
-        "app.storage=./target/test-uploads"
+        "app.storage=./target/test-uploads",
+        "app.video-storage=./target/test-videos"
 })
 @AutoConfigureMockMvc
 @Transactional
@@ -186,10 +187,51 @@ class ApplicationTest {
     }
 
     @Test
+    void videoEndpointSupportsByteRangesAfterVisibilityCheck() throws Exception {
+        byte[] videoBytes = new byte[]{0, 0, 0, 16, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm', 1, 2, 3, 4,
+                0, 0, 0, 9, 'm', 'd', 'a', 't', 5,
+                0, 0, 0, 8, 'm', 'o', 'o', 'v'};
+        int videoLength = videoBytes.length;
+        FileStore.Stored stored = files.save(new MockMultipartFile("file", "clip.mp4", "video/mp4", videoBytes), "video");
+        videoBytes = java.nio.file.Files.readAllBytes(files.load(stored.key()).getFile().toPath());
+        Post video = createPost(Review.APPROVED, Visibility.PUBLIC);
+        video.setKind(Kind.VIDEO);
+        video.setFileKey(stored.key());
+        video.setFileType(stored.type());
+        posts.saveAndFlush(video);
+
+        mvc.perform(get("/posts/{id}/file", video.getId()).with(user("author").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Accept-Ranges", "bytes"))
+                .andExpect(header().string("Content-Disposition", "inline"))
+                .andExpect(header().string("Content-Type", "video/mp4"))
+                .andExpect(header().string("Content-Length", Integer.toString(videoBytes.length)))
+                .andExpect(content().bytes(videoBytes));
+        mvc.perform(get("/posts/{id}/file", video.getId()).with(user("author").roles("USER"))
+                .header("Range", "bytes=4-7"))
+                .andExpect(status().isPartialContent())
+                .andExpect(header().string("Content-Range", "bytes 4-7/" + videoLength))
+                .andExpect(header().string("Content-Length", "4"))
+                .andExpect(content().bytes(new byte[]{'f', 't', 'y', 'p'}));
+        mvc.perform(get("/posts/{id}/file", video.getId()).with(user("author").roles("USER"))
+                .header("Range", "bytes=" + videoLength + "-" + (videoLength + 4)))
+                .andExpect(status().isRequestedRangeNotSatisfiable())
+                .andExpect(header().string("Content-Range", "bytes */" + videoLength));
+    }
+
+    @Test
+    void cosObjectKeysKeepValidatedFileExtensions() {
+        String id = "e43fc0c1-bd1d-40b5-8d4c-2b3eb6508d29";
+        assertThat(FileStore.objectKey(id, "mp4")).isEqualTo(id + ".mp4");
+        assertThat(FileStore.objectKey(id, "")).isEqualTo(id);
+    }
+
+    @Test
     void filesRequirePermissionAndValidateTypes() throws Exception {
         MockMultipartFile image = new MockMultipartFile("file", "image.png", "image/png",
                 new byte[]{(byte) 137, 80, 78, 71, 13, 10, 26, 10, 1});
         FileStore.Stored stored = files.save(image, "image");
+        assertThat(stored.key()).matches("[0-9a-f-]{36}");
         Post p = createPost(Review.PENDING, Visibility.PUBLIC);
         p.setFileKey(stored.key());
         p.setFileType(stored.type());
@@ -252,6 +294,10 @@ class ApplicationTest {
                 assertThatThrownBy(() -> files.save(exe, category)).isInstanceOf(IllegalArgumentException.class);
                 assertThatThrownBy(() -> files.save(apk, category)).isInstanceOf(IllegalArgumentException.class);
             }
+            MockMultipartFile truncatedMp4 = new MockMultipartFile("file", "truncated.mp4", "video/mp4",
+                    new byte[]{0, 0, 0, 16, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm', 1, 2, 3, 4});
+            assertThatThrownBy(() -> files.save(truncatedMp4, "video"))
+                    .isInstanceOf(IllegalArgumentException.class);
         } finally {
             for (String key : keys) {
                 files.delete(key);
@@ -286,10 +332,15 @@ class ApplicationTest {
                 ResourceFile resource = resources.findAll().stream()
                         .filter(r -> r.getName().equals(file.getOriginalFilename())).findFirst().orElseThrow();
                 keys.add(resource.getFileKey());
-                assertThat(resource.isVisible()).isFalse();
-                mvc.perform(get("/resources/{id}/file", resource.getId())).andExpect(status().is3xxRedirection());
-                mvc.perform(get("/resources/{id}/file", resource.getId()).with(user("other").roles("USER")))
-                        .andExpect(status().isForbidden());
+                assertThat(resource.isVisible()).isTrue();
+                mvc.perform(get("/resources?folderId={folderId}", folder.getId())
+                        .with(user("other").roles("USER")))
+                        .andExpect(status().isOk())
+                        .andExpect(content().string(org.hamcrest.Matchers.containsString(file.getOriginalFilename())))
+                        .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                                "/resources/" + resource.getId() + "/file")));
+                mvc.perform(get("/resources/{id}/file", resource.getId()))
+                        .andExpect(status().is3xxRedirection());
                 mvc.perform(get("/resources/{id}/file", resource.getId()).with(user("adminuser").roles("ADMIN")))
                         .andExpect(status().isOk())
                         .andExpect(header().string("Content-Disposition",
@@ -298,8 +349,6 @@ class ApplicationTest {
                         .andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")))
                         .andExpect(content().contentType("application/octet-stream"))
                         .andExpect(content().bytes(file.getBytes()));
-                resource.setVisible(true);
-                resources.saveAndFlush(resource);
                 mvc.perform(get("/resources/{id}/file", resource.getId()).with(user("other").roles("USER")))
                         .andExpect(status().isOk())
                         .andExpect(header().string("Content-Disposition",
@@ -332,14 +381,53 @@ class ApplicationTest {
         mvc.perform(post("/posts/{id}/comments", blog.getId()).with(user("other").roles("USER")).with(csrf())
                 .param("body", "不错"))
                 .andExpect(status().is3xxRedirection());
+        mvc.perform(post("/posts/{id}/like", blog.getId()).with(user("other").roles("USER")).with(csrf()))
+                .andExpect(status().is3xxRedirection());
+        mvc.perform(get("/posts/{id}", blog.getId()).with(user("other").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("取消点赞")));
+        mvc.perform(post("/posts/{id}/like", blog.getId()).with(user("other").roles("USER")).with(csrf()))
+                .andExpect(status().is3xxRedirection());
+        assertThat(blog.getViewCount()).isEqualTo(1);
+        mvc.perform(get("/").with(user("author").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("作品总浏览")));
+        MockMultipartFile blogImage = new MockMultipartFile("files", "cover.png", "image/png",
+                new byte[]{(byte) 137, 80, 78, 71, 13, 10, 26, 10, 1});
         mvc.perform(get("/posts").with(user("other").roles("USER")).param("q", "奥拉星"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("奥拉星新篇")));
-        MockMultipartFile video = new MockMultipartFile("files", "demo.mp4", "video/mp4",
-                new byte[]{0, 0, 0, 16, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm'});
-        mvc.perform(multipart("/posts/save").file(video).with(user("author").roles("USER")).with(csrf())
-                .param("kind", "VIDEO").param("title", "视频").param("visibility", "FRIENDS"))
+        mvc.perform(multipart("/posts/save").file(blogImage).with(user("author").roles("USER")).with(csrf())
+                .param("id", blog.getId().toString()).param("kind", "BLOG").param("title", "奥拉星新篇")
+                .param("body", "你好").param("visibility", "PUBLIC"))
                 .andExpect(status().is3xxRedirection());
+        mvc.perform(get("/posts/{id}/edit", blog.getId()).with(user("author").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("/posts/" + blog.getId() + "/images/0")));
+        MockMultipartFile video = new MockMultipartFile("files", "demo.mp4", "video/mp4",
+                new byte[]{0, 0, 0, 16, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm', 1, 2, 3, 4,
+                        0, 0, 0, 9, 'm', 'd', 'a', 't', 5, 0, 0, 0, 8, 'm', 'o', 'o', 'v'});
+        mvc.perform(multipart("/posts/save").file(video).with(user("author").roles("USER")).with(csrf())
+                .param("kind", "VIDEO").param("title", "视频").param("visibility", "PUBLIC"))
+                .andExpect(status().is3xxRedirection());
+        Post videoPost = posts.findAll().stream().filter(post -> post.getKind() == Kind.VIDEO).findFirst().orElseThrow();
+        String existingVideoKey = videoPost.getFileKey();
+        mvc.perform(get("/posts/{id}/edit", videoPost.getId()).with(user("author").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("/posts/" + videoPost.getId() + "/file")));
+        mvc.perform(multipart("/posts/save").with(user("author").roles("USER")).with(csrf())
+                .param("id", videoPost.getId().toString()).param("kind", "VIDEO").param("title", "视频修改")
+                .param("visibility", "FRIENDS"))
+                .andExpect(status().is3xxRedirection());
+        assertThat(videoPost.getFileKey()).isEqualTo(existingVideoKey);
+        mvc.perform(post("/admin/review/{id}", videoPost.getId()).with(user("adminuser").roles("ADMIN")).with(csrf())
+                .param("approve", "true"))
+                .andExpect(status().is3xxRedirection());
+        mvc.perform(post("/posts/{id}/comments", videoPost.getId()).with(user("author").roles("USER")).with(csrf())
+                .param("body", "视频评论"))
+                .andExpect(status().is3xxRedirection());
+        assertThat(existingVideoKey).startsWith("video/").endsWith(".mp4");
+        assertThat(files.load(existingVideoKey).getFile().getParentFile().getName()).isEqualTo("test-videos");
         mvc.perform(post("/admin/folders").with(user("adminuser").roles("ADMIN")).with(csrf()).param("name", "资源"))
                 .andExpect(status().is3xxRedirection());
         Long folderId = folders.findAll().get(0).getId();
@@ -348,11 +436,22 @@ class ApplicationTest {
                 .param("folderId", folderId.toString()))
                 .andExpect(status().is3xxRedirection());
         ResourceFile resource = resources.findAll().get(0);
-        assertThat(resource.isVisible()).isFalse();
+        assertThat(resource.isVisible()).isTrue();
+        mvc.perform(get("/resources").param("folderId", folderId.toString())
+                .with(user("other").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("guide.pdf")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "/resources/" + resource.getId() + "/file")));
+        mvc.perform(get("/resources/{id}/file", resource.getId()).with(user("other").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(content().bytes(pdf.getBytes()));
         mvc.perform(post("/admin/resources/{id}/visibility", resource.getId())
                 .with(user("adminuser").roles("ADMIN")).with(csrf()))
                 .andExpect(status().is3xxRedirection());
-        assertThat(resources.findById(resource.getId()).orElseThrow().isVisible()).isTrue();
+        assertThat(resources.findById(resource.getId()).orElseThrow().isVisible()).isFalse();
+        mvc.perform(get("/resources/{id}/file", resource.getId()).with(user("other").roles("USER")))
+                .andExpect(status().isForbidden());
         mvc.perform(get("/posts/{id}/edit", blog.getId()).with(user("author").roles("USER")))
                 .andExpect(status().isOk());
     }

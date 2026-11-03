@@ -62,6 +62,7 @@ CREATE TABLE `posts` (
     `rejection_reason` VARCHAR(500),
     `file_key` VARCHAR(100),
     `file_type` VARCHAR(100),
+    `view_count` BIGINT NOT NULL DEFAULT 0,
     `created_at` DATETIME(6) NOT NULL,
     `updated_at` DATETIME(6) NOT NULL,
     PRIMARY KEY (`id`),
@@ -74,6 +75,17 @@ CREATE TABLE `post_tags` (
     PRIMARY KEY (`model$post_id`, `tags_id`),
     CONSTRAINT `FK12af4v6mkdjp0askgitum0h4x` FOREIGN KEY (`model$post_id`) REFERENCES `posts` (`id`),
     CONSTRAINT `FKc9w0wcpokniw86jioo5rrb37s` FOREIGN KEY (`tags_id`) REFERENCES `tags` (`id`)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+CREATE TABLE `post_likes` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `post_id` BIGINT NOT NULL,
+    `user_id` BIGINT NOT NULL,
+    `created_at` DATETIME(6) NOT NULL,
+    PRIMARY KEY (`id`),
+    CONSTRAINT `UK_post_like_user` UNIQUE (`post_id`, `user_id`),
+    CONSTRAINT `FK_post_like_post` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`),
+    CONSTRAINT `FK_post_like_user` FOREIGN KEY (`user_id`) REFERENCES `app_users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 CREATE TABLE `comments` (

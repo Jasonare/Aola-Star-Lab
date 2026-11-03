@@ -101,6 +101,21 @@ tbody tr:hover { background: #f7fbfb; }
 .filter-bar { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr auto; align-items: end; gap: .8rem; margin-bottom: 1.25rem; }
 .filter-bar label { margin: 0; }
 .post-list, .resource-list, .friend-list { display: grid; gap: .55rem; }
+.video-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+.video-card { min-width: 0; margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: none; }
+.video-frame { width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: #101827; }
+.video-frame video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.video-frame-empty { display: grid; place-items: center; color: #fff; font-size: .85rem; }
+.editor-video-frame { width: min(100%, 720px); margin: .65rem 0 1rem; border-radius: 8px; }
+.video-file-preview { display: block; width: min(100%, 720px); aspect-ratio: 16 / 9; margin: .75rem 0 1rem; overflow: hidden; border-radius: 8px; background: #101827; }
+.video-file-preview video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.field-label { margin: .75rem 0 .35rem; color: var(--ink-soft); font-size: .85rem; font-weight: 700; }
+.video-frame-link { display: block; color: inherit; }
+.video-card-copy { min-width: 0; padding: .75rem .85rem .85rem; }
+.video-card-copy .post-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.video-card-copy .tag-line { max-height: 2rem; overflow: hidden; }
+@media (max-width: 900px) { .video-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .video-grid { grid-template-columns: minmax(0, 1fr); } }
 .post-row, .resource-row, .friend-row { display: flex; align-items: center; gap: .85rem; padding: .9rem; border: 1px solid transparent; border-radius: 11px; background: #f7f9fc; }
 .post-row:hover, .resource-row:hover, .friend-row:hover { border-color: #cde8e5; background: #f2fbfa; }
 .post-kind { display: grid; width: 2.35rem; height: 2.35rem; flex: 0 0 auto; place-items: center; border-radius: 9px; background: var(--navy); color: var(--cyan); font-weight: 900; }

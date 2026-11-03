@@ -2,7 +2,9 @@ spring:
   application:
     name: aola-star-lab
   config:
-    import: optional:file:./config/mysql-local.yml
+    import:
+      - optional:file:./config/mysql-local.yml
+      - optional:file:./data/uploads/cos.yml
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: '${DB_URL:jdbc:mysql://106.54.208.184:3306/aola_lab?useUnicode=true&characterEncoding=utf8mb4&allowMultiQueries=true&characterEncoding=utf8&autoReconnect=true&allowPublicKeyRetrieval=true&useSSL=false}'
@@ -30,10 +32,10 @@ server:
     include-message: never
 app:
   storage: '${APP_STORAGE:./data/uploads}'
+  video-storage: '${APP_VIDEO_STORAGE:./data/vedios}'
   cos:
-    enabled: '${COS_ENABLED:true}'
-    bucket: '${COS_BUCKET:aola-star-hub-1350639287}'
-    region: '${COS_REGION:ap-shanghai}'
-    base-url: '${COS_BASE_URL:https://aola-star-hub-1350639287.cos.ap-shanghai.myqcloud.com/}'
-    secret-id: '${COS_SECRET_ID:}'
-    secret-key: '${COS_SECRET_KEY:}'
+    enabled: false
+    bucket: aola-star-hub-1350639287
+    region: ap-shanghai
+    secret-id: ''
+    secret-key: ''

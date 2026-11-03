@@ -10,6 +10,7 @@ import com.aola.lab.Model.Friendship;
 import com.aola.lab.Model.Kind;
 import com.aola.lab.Model.LoginLog;
 import com.aola.lab.Model.Post;
+import com.aola.lab.Model.PostLike;
 import com.aola.lab.Model.ResourceFile;
 import com.aola.lab.Model.Tag;
 import com.aola.lab.Model.User;
@@ -49,6 +50,17 @@ public class Repositories {
         List<Post> findByAuthorAndKindOrderByUpdatedAtDesc(User user, Kind kind);
 
         long countByAuthorAndKind(User user, Kind kind);
+
+    }
+
+    public interface PostLikes extends JpaRepository<PostLike, Long> {
+        boolean existsByPostAndUser(Post post, User user);
+
+        long countByPost(Post post);
+
+        long countByPostAuthor(User author);
+
+        Optional<PostLike> findByPostAndUser(Post post, User user);
     }
 
     public interface Comments extends JpaRepository<Comment, Long> {
@@ -57,6 +69,10 @@ public class Repositories {
         List<Comment> findByParentOrderByCreatedAtAsc(Comment parent);
 
         List<Comment> findTop5ByPostAuthorOrderByCreatedAtDesc(User author);
+
+        long countByPost(Post post);
+
+        long countByPostAuthor(User author);
     }
 
     public interface Folders extends JpaRepository<Folder, Long> {

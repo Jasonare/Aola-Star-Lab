@@ -11,6 +11,8 @@
                 <div class="stats-grid">
                     <div class="stat-card"><span class="stat-label">博客</span><strong class="stat-number" th:text="${blogCount}"></strong></div>
                     <div class="stat-card"><span class="stat-label">视频</span><strong class="stat-number" th:text="${videoCount}"></strong></div>
+                    <div class="stat-card"><span class="stat-label">作品总浏览</span><strong class="stat-number" th:text="${totalViews}"></strong></div>
+                    <div class="stat-card"><span class="stat-label">作品总点赞</span><strong class="stat-number" th:text="${totalLikes}"></strong></div>
                 </div>
                 <div class="actions" style="margin-top: 1rem"><a class="btn" th:href="@{/posts/new(kind='BLOG')}"><i class="fa fa-pencil-square-o"></i> 发布博客</a><a class="btn btn-secondary" th:href="@{/posts/new(kind='VIDEO')}"><i class="fa fa-video-camera"></i> 发布视频</a><a class="btn btn-secondary" th:href="@{/works}"><i class="fa fa-folder-open-o"></i> 个人作品</a></div>
             </section>

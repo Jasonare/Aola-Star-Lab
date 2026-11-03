@@ -9,12 +9,14 @@ import com.aola.lab.Model.Friendship;
 import com.aola.lab.Model.FriendshipStatus;
 import com.aola.lab.Model.Kind;
 import com.aola.lab.Model.Post;
+import com.aola.lab.Model.PostLike;
 import com.aola.lab.Model.Review;
 import com.aola.lab.Model.Tag;
 import com.aola.lab.Model.User;
 import com.aola.lab.Model.Visibility;
 import com.aola.lab.Repositories.Comments;
 import com.aola.lab.Repositories.Friendships;
+import com.aola.lab.Repositories.PostLikes;
 import com.aola.lab.Repositories.Posts;
 import com.aola.lab.Repositories.Tags;
 import com.aola.lab.Repositories.Users;
@@ -31,15 +33,17 @@ public class LabService {
     private final Posts posts;
     private final Tags tags;
     private final Comments comments;
+    private final PostLikes postLikes;
     private final PasswordEncoder encoder;
 
     public LabService(Users users, Friendships friendships, Posts posts, Tags tags, Comments comments,
-            PasswordEncoder encoder) {
+            PostLikes postLikes, PasswordEncoder encoder) {
         this.users = users;
         this.friendships = friendships;
         this.posts = posts;
         this.tags = tags;
         this.comments = comments;
+        this.postLikes = postLikes;
         this.encoder = encoder;
     }
 
@@ -158,8 +162,8 @@ public class LabService {
 
     public void comment(User user, Long postId, Long parentId, String body) {
         Post p = visiblePost(user, postId);
-        if (p.getKind() != Kind.BLOG || p.getReview() != Review.APPROVED) {
-            throw new IllegalArgumentException("仅已审核博客可评论");
+        if (p.getReview() != Review.APPROVED) {
+            throw new IllegalArgumentException("仅已审核内容可评论");
         }
         if (body == null || body.isBlank() || body.length() > 1000) {
             throw new IllegalArgumentException("评论须为1至1000字");
@@ -168,7 +172,7 @@ public class LabService {
         if (parentId != null) {
             parent = comments.findById(parentId).orElseThrow(() -> new IllegalArgumentException("要回复的评论不存在"));
             if (!parent.getPost().getId().equals(p.getId()) || parent.getParent() != null) {
-                throw new IllegalArgumentException("只能回复当前文章的一级评论");
+                throw new IllegalArgumentException("只能回复当前作品的一级评论");
             }
         }
         Comment c = new Comment();
@@ -177,6 +181,28 @@ public class LabService {
         c.setParent(parent);
         c.setBody(body.trim());
         comments.save(c);
+    }
+
+    public boolean toggleLike(User user, Long postId) {
+        Post post = visiblePost(user, postId);
+        if (post.getReview() != Review.APPROVED) {
+            throw new IllegalArgumentException("仅已审核内容可点赞");
+        }
+        Optional<PostLike> existing = postLikes.findByPostAndUser(post, user);
+        if (existing.isPresent()) {
+            postLikes.delete(existing.get());
+            return false;
+        }
+        PostLike like = new PostLike();
+        like.setPost(post);
+        like.setUser(user);
+        postLikes.save(like);
+        return true;
+    }
+
+    public void incrementView(Post post) {
+        post.setViewCount(post.getViewCount() + 1);
+        posts.save(post);
     }
 
     public void review(Long id, boolean approve, String reason) {
