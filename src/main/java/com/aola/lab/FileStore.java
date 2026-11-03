@@ -77,8 +77,13 @@ public class FileStore {
     }
 
     public Stored save(MultipartFile file, String category) throws IOException {
-        if (file == null || file.isEmpty() || file.getSize() > 100L * 1024 * 1024) {
-            throw new IllegalArgumentException("文件为空或超过100MB");
+        long maxSize = switch (category) {
+            case "video" -> 250L * 1024 * 1024;
+            case "resource" -> 5L * 1024 * 1024 * 1024;
+            default -> 100L * 1024 * 1024;
+        };
+        if (file == null || file.isEmpty() || file.getSize() > maxSize) {
+            throw new IllegalArgumentException("文件为空或超过" + formatSize(maxSize));
         }
         String original = Optional.ofNullable(file.getOriginalFilename()).orElse("").toLowerCase(Locale.ROOT);
         String ext = original.contains(".") ? original.substring(original.lastIndexOf('.') + 1) : "";
@@ -89,14 +94,21 @@ public class FileStore {
         try (InputStream in = file.getInputStream()) {
             head = in.readNBytes(16);
         }
+        String detectedImageType = detectImageType(head);
+        if (category.equals("image") && detectedImageType != null) {
+            ext = switch (detectedImageType) {
+                case "image/png" -> "png";
+                case "image/jpeg" -> "jpg";
+                case "image/webp" -> "webp";
+                default -> ext;
+            };
+        }
         boolean validMp4 = ext.equals("mp4") && hasValidMp4Structure(file);
-        // 根据文件头校验扩展名对应的类型。
-        String type = switch (ext) {
-            case "png" -> starts(head, new int[]{137, 80, 78, 71, 13, 10, 26, 10}) ? "image/png" : null;
-            case "jpg", "jpeg" -> starts(head, new int[]{255, 216, 255}) ? "image/jpeg" : null;
-            case "webp" -> head.length >= 12 && starts(head, new int[]{82, 73, 70, 70})
-                    && head[8] == 'W' && head[9] == 'E' && head[10] == 'B' && head[11] == 'P'
-                    ? "image/webp" : null;
+        // 图片类型依据内容签名识别，避免文件扩展名和真实格式不同导致误拒。
+        String type = category.equals("image") ? detectedImageType : switch (ext) {
+            case "png" -> "image/png".equals(detectedImageType) ? "image/png" : null;
+            case "jpg", "jpeg" -> "image/jpeg".equals(detectedImageType) ? "image/jpeg" : null;
+            case "webp" -> "image/webp".equals(detectedImageType) ? "image/webp" : null;
             case "mp4" -> validMp4 && head.length >= 12 && head[4] == 'f' && head[5] == 't'
                     && head[6] == 'y' && head[7] == 'p' ? "video/mp4" : null;
             case "pdf" -> starts(head, new int[]{37, 80, 68, 70, 45}) ? "application/pdf" : null;
@@ -131,6 +143,26 @@ public class FileStore {
             }
         }
         return new Stored(key, type);
+    }
+
+    private String detectImageType(byte[] head) {
+        if (starts(head, new int[]{137, 80, 78, 71, 13, 10, 26, 10})) {
+            return "image/png";
+        }
+        if (starts(head, new int[]{255, 216, 255})) {
+            return "image/jpeg";
+        }
+        if (head.length >= 12 && starts(head, new int[]{82, 73, 70, 70})
+                && head[8] == 'W' && head[9] == 'E' && head[10] == 'B' && head[11] == 'P') {
+            return "image/webp";
+        }
+        return null;
+    }
+
+    private String formatSize(long bytes) {
+        return bytes >= 1024L * 1024 * 1024
+                ? (bytes / (1024L * 1024 * 1024)) + "GB"
+                : (bytes / (1024L * 1024)) + "MB";
     }
 
     private boolean hasValidMp4Structure(MultipartFile file) throws IOException {

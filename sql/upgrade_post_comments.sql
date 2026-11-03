@@ -1,6 +1,10 @@
--- Upgrade existing MySQL 8 databases for post update timestamps and threaded comments.
+-- Upgrade existing MySQL 8 databases for post update timestamps and threaded comments, likes, and tag mapping.
 -- Run once against the intended aola_lab database.
 USE `aola_lab`;
+
+-- Existing databases created with the earlier generated name need to rename the join column.
+ALTER TABLE `post_tags`
+    RENAME COLUMN `model$post_id` TO `post_id`;
 
 ALTER TABLE `posts`
     ADD COLUMN `updated_at` DATETIME(6) NULL;

@@ -11,6 +11,7 @@
                 <input type="hidden" name="kind" th:if="${selectedKind != null}" th:value="${selectedKind.name()}">
                 <label>起始时间<input type="date" name="from" th:value="${fromDate}" th:attr="max=${untilDate}"></label>
                 <label>终止时间<input type="date" name="until" th:value="${untilDate}" th:attr="min=${fromDate}"></label>
+                <label>排序方式<select name="sort"><option value="time" th:selected="${selectedSort == 'time'}">更新时间倒序</option><option value="likes" th:selected="${selectedSort == 'likes'}">点赞数倒序</option><option value="views" th:selected="${selectedSort == 'views'}">浏览量倒序</option></select></label>
                 <button><i class="fa fa-search" aria-hidden="true"></i> 搜索内容</button>
             </form>
             <section class="list-panel">
@@ -35,7 +36,7 @@
                         <div class="post-kind" th:text="${p.kind.name() == 'BLOG' ? '文' : '影'}"></div>
                         <div class="post-copy">
                             <a class="post-title" th:href="@{/posts/{id}(id=${p.id})}" th:text="${p.title}"></a>
-                            <p class="post-list-meta"><span th:text="${p.author.username}"></span><span class="dot-sep">·</span><span th:text="${p.review}"></span><span class="dot-sep">·</span><span th:text="${postDates[p.id]}"></span><span class="dot-sep">·</span><span th:text="${p.viewCount} + ' 浏览'"></span><span class="dot-sep">·</span><span th:text="${likeCounts[p.id]} + ' 点赞'"></span><span class="dot-sep">·</span><span th:text="${commentCounts[p.id]} + ' 评论'"></span></p>
+                            <p class="post-list-meta"><span th:text="${p.author.username}"></span><span class="dot-sep">·</span><span th:text="${postDates[p.id]}"></span><span class="dot-sep">·</span><span th:text="${p.viewCount} + ' 浏览'"></span><span class="dot-sep">·</span><span th:text="${likeCounts[p.id]} + ' 点赞'"></span><span class="dot-sep">·</span><span th:text="${commentCounts[p.id]} + ' 评论'"></span></p>
                             <p class="article-preview" th:if="${p.kind.name() == 'BLOG'}" th:text="${#strings.length(p.body == null ? '' : p.body) > 20 ? #strings.substring(p.body, 0, 20) + '…' : (p.body == null ? '' : p.body)}"></p>
                             <a class="read-more" th:if="${p.kind.name() == 'BLOG'}" th:href="@{/posts/{id}(id=${p.id})}">阅读全文 <i class="fa fa-angle-right"></i></a>
                             <div class="tag-line"><span class="tag" th:each="tag : ${p.tags}" th:text="${tag.name}"></span></div>

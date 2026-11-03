@@ -167,7 +167,7 @@ public class Model {
 
         @ManyToMany
         @JoinTable(name = "post_tags",
-                joinColumns = @JoinColumn(name = "model$post_id"),
+                joinColumns = @JoinColumn(name = "post_id"),
                 inverseJoinColumns = @JoinColumn(name = "tags_id"))
         private Set<Tag> tags = new HashSet<>();
 

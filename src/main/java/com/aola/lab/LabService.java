@@ -200,9 +200,11 @@ public class LabService {
         return true;
     }
 
-    public void incrementView(Post post) {
-        post.setViewCount(post.getViewCount() + 1);
-        posts.save(post);
+    public void incrementView(Post post, User viewer) {
+        if (!post.getAuthor().getId().equals(viewer.getId())) {
+            post.setViewCount(post.getViewCount() + 1);
+            posts.save(post);
+        }
     }
 
     public void review(Long id, boolean approve, String reason) {

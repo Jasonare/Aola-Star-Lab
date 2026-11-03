@@ -4,14 +4,17 @@ import com.aola.lab.Model.Folder;
 import com.aola.lab.Model.Friendship;
 import com.aola.lab.Model.Kind;
 import com.aola.lab.Model.Post;
+import com.aola.lab.Model.PostLike;
 import com.aola.lab.Model.ResourceFile;
 import com.aola.lab.Model.Review;
+import com.aola.lab.Model.Tag;
 import com.aola.lab.Model.User;
 import com.aola.lab.Model.Visibility;
 import com.aola.lab.Repositories.Folders;
 import com.aola.lab.Repositories.Friendships;
 import com.aola.lab.Repositories.Posts;
 import com.aola.lab.Repositories.Resources;
+import com.aola.lab.Repositories.Tags;
 import com.aola.lab.Repositories.Users;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -59,6 +62,10 @@ class ApplicationTest {
     Friendships friendships;
     @Autowired
     Resources resources;
+    @Autowired
+    Tags tags;
+    @Autowired
+    Repositories.PostLikes postLikes;
     @Autowired
     Folders folders;
     @Autowired
@@ -154,6 +161,9 @@ class ApplicationTest {
         assertThat(service.canView(other, p)).isFalse();
         assertThat(service.canView(author, p)).isTrue();
         assertThat(service.canView(admin, p)).isTrue();
+        mvc.perform(get("/posts/{id}", p.getId()).with(user("author").roles("USER")))
+                .andExpect(status().isOk());
+        assertThat(posts.findById(p.getId()).orElseThrow().getViewCount()).isZero();
         mvc.perform(get("/posts/{id}", p.getId()).with(user("other").roles("USER")))
                 .andExpect(status().isForbidden());
         service.review(p.getId(), true, null);
@@ -171,6 +181,7 @@ class ApplicationTest {
         assertThat(service.canView(other, p)).isTrue();
         mvc.perform(get("/posts/{id}", p.getId()).with(user("other").roles("USER")))
                 .andExpect(status().isOk());
+        assertThat(posts.findById(p.getId()).orElseThrow().getViewCount()).isEqualTo(1);
     }
 
     @Test
@@ -184,6 +195,38 @@ class ApplicationTest {
         service.savePost(p, author, Kind.BLOG, "新标题", "正文", Visibility.PUBLIC, null);
         assertThat(p.getReview()).isEqualTo(Review.PENDING);
         assertThat(p.getRejectionReason()).isNull();
+    }
+
+    @Test
+    void blogImagesCanBeAddedRetainedAndRemovedFromEditor() throws Exception {
+        byte[] pngBytes = new byte[]{(byte) 137, 80, 78, 71, 13, 10, 26, 10, 1};
+        MockMultipartFile firstImage = new MockMultipartFile("files", "first.png", "image/png", pngBytes);
+        MockMultipartFile secondImage = new MockMultipartFile("files", "second.png", "image/png", pngBytes);
+        mvc.perform(multipart("/posts/save").file(firstImage).file(secondImage)
+                .with(user("author").roles("USER")).with(csrf())
+                .param("kind", "BLOG").param("title", "多图文章").param("visibility", "PUBLIC")
+                .param("imageSelectionProvided", "true"))
+                .andExpect(status().is3xxRedirection());
+        Post blog = posts.findAll().stream().filter(post -> post.getTitle().equals("多图文章")).findFirst().orElseThrow();
+        assertThat(blog.getImageKeys()).hasSize(2);
+        String removedKey = blog.getImageKeys().get(0);
+        String retainedKey = blog.getImageKeys().get(1);
+
+        mvc.perform(multipart("/posts/save").with(user("author").roles("USER")).with(csrf())
+                .param("id", blog.getId().toString()).param("kind", "BLOG").param("title", "多图文章")
+                .param("visibility", "PUBLIC").param("imageSelectionProvided", "true")
+                .param("retainedImageIndexes", "1"))
+                .andExpect(status().is3xxRedirection());
+        Post updated = posts.findById(blog.getId()).orElseThrow();
+        assertThat(updated.getImageKeys()).containsExactly(retainedKey);
+        assertThatThrownBy(() -> files.load(removedKey)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(files.load(retainedKey).exists()).isTrue();
+
+        mvc.perform(multipart("/posts/save").with(user("author").roles("USER")).with(csrf())
+                .param("id", blog.getId().toString()).param("kind", "BLOG").param("title", "多图文章")
+                .param("visibility", "PUBLIC").param("imageSelectionProvided", "true"))
+                .andExpect(status().is3xxRedirection());
+        assertThat(posts.findById(blog.getId()).orElseThrow().getImageKeys()).isEmpty();
     }
 
     @Test
@@ -232,6 +275,10 @@ class ApplicationTest {
                 new byte[]{(byte) 137, 80, 78, 71, 13, 10, 26, 10, 1});
         FileStore.Stored stored = files.save(image, "image");
         assertThat(stored.key()).matches("[0-9a-f-]{36}");
+        FileStore.Stored mislabeledImage = files.save(new MockMultipartFile("file", "image.jpg", "image/jpeg",
+                new byte[]{(byte) 137, 80, 78, 71, 13, 10, 26, 10, 1}), "image");
+        assertThat(mislabeledImage.type()).isEqualTo("image/png");
+        files.delete(mislabeledImage.key());
         Post p = createPost(Review.PENDING, Visibility.PUBLIC);
         p.setFileKey(stored.key());
         p.setFileType(stored.type());
@@ -259,6 +306,30 @@ class ApplicationTest {
         resources.saveAndFlush(r);
         mvc.perform(get("/resources/{id}/file", r.getId()).with(user("other").roles("USER")))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void uploadSizeLimitsAreCategorySpecific() {
+        long videoLimit = 250L * 1024 * 1024;
+        long resourceLimit = 5L * 1024 * 1024 * 1024;
+        MockMultipartFile oversizedVideo = new MockMultipartFile("file", "large.mp4", "video/mp4",
+                new byte[1]) {
+            @Override
+            public long getSize() {
+                return videoLimit + 1;
+            }
+        };
+        MockMultipartFile oversizedResource = new MockMultipartFile("file", "large.pdf", "application/pdf",
+                new byte[1]) {
+            @Override
+            public long getSize() {
+                return resourceLimit + 1;
+            }
+        };
+        assertThatThrownBy(() -> files.save(oversizedVideo, "video"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("250MB");
+        assertThatThrownBy(() -> files.save(oversizedResource, "resource"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("5GB");
     }
 
     @Test
@@ -369,6 +440,58 @@ class ApplicationTest {
     }
 
     @Test
+    void contentListsHideInternalStatesAndSupportDescendingSorts() throws Exception {
+        Post oldest = createPost(Review.APPROVED, Visibility.PUBLIC);
+        oldest.setTitle("第一篇排序测试");
+        oldest.setUpdatedAt(java.time.LocalDateTime.now().minusDays(2));
+        oldest.setViewCount(30);
+        posts.saveAndFlush(oldest);
+
+        Post middle = createPost(Review.APPROVED, Visibility.PUBLIC);
+        middle.setTitle("第二篇排序测试");
+        middle.setUpdatedAt(java.time.LocalDateTime.now().minusDays(1));
+        middle.setViewCount(10);
+        posts.saveAndFlush(middle);
+
+        Post newest = createPost(Review.APPROVED, Visibility.PUBLIC);
+        newest.setTitle("第三篇排序测试");
+        newest.setUpdatedAt(java.time.LocalDateTime.now());
+        newest.setViewCount(20);
+        posts.saveAndFlush(newest);
+
+        for (User liker : new User[]{author, other, admin}) {
+            PostLike like = new PostLike();
+            like.setPost(oldest);
+            like.setUser(liker);
+            postLikes.save(like);
+        }
+        PostLike middleLike = new PostLike();
+        middleLike.setPost(middle);
+        middleLike.setUser(other);
+        postLikes.save(middleLike);
+
+        String timeSorted = mvc.perform(get("/posts").with(user("other").roles("USER"))
+                .param("q", "排序测试").param("sort", "time"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("APPROVED"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("PUBLIC"))))
+                .andReturn().getResponse().getContentAsString();
+        assertThat(timeSorted.indexOf("第三篇排序测试")).isLessThan(timeSorted.indexOf("第二篇排序测试"));
+
+        String likesSorted = mvc.perform(get("/posts").with(user("other").roles("USER"))
+                .param("q", "排序测试").param("sort", "likes"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(likesSorted.indexOf("第一篇排序测试")).isLessThan(likesSorted.indexOf("第二篇排序测试"));
+
+        String viewsSorted = mvc.perform(get("/posts").with(user("other").roles("USER"))
+                .param("q", "排序测试").param("sort", "views"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(viewsSorted.indexOf("第一篇排序测试")).isLessThan(viewsSorted.indexOf("第三篇排序测试"));
+    }
+
+    @Test
     void contentAndResourceWorkflows() throws Exception {
         mvc.perform(multipart("/posts/save").with(user("author").roles("USER")).with(csrf()).param("kind", "BLOG")
                 .param("title", "奥拉星新篇").param("body", "你好").param("visibility", "PUBLIC"))
@@ -407,9 +530,16 @@ class ApplicationTest {
         MockMultipartFile video = new MockMultipartFile("files", "demo.mp4", "video/mp4",
                 new byte[]{0, 0, 0, 16, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm', 1, 2, 3, 4,
                         0, 0, 0, 9, 'm', 'd', 'a', 't', 5, 0, 0, 0, 8, 'm', 'o', 'o', 'v'});
+        Tag videoTag = new Tag();
+        videoTag.setName("攻略");
+        videoTag = tags.saveAndFlush(videoTag);
         mvc.perform(multipart("/posts/save").file(video).with(user("author").roles("USER")).with(csrf())
-                .param("kind", "VIDEO").param("title", "视频").param("visibility", "PUBLIC"))
+                .param("kind", "VIDEO").param("title", "视频").param("visibility", "PUBLIC")
+                .param("tagIds", videoTag.getId().toString()))
                 .andExpect(status().is3xxRedirection());
+        Post taggedVideo = posts.findAll().stream().filter(post -> post.getKind() == Kind.VIDEO)
+                .findFirst().orElseThrow();
+        assertThat(taggedVideo.getTags()).extracting(Tag::getName).containsExactly("攻略");
         Post videoPost = posts.findAll().stream().filter(post -> post.getKind() == Kind.VIDEO).findFirst().orElseThrow();
         String existingVideoKey = videoPost.getFileKey();
         mvc.perform(get("/posts/{id}/edit", videoPost.getId()).with(user("author").roles("USER")))

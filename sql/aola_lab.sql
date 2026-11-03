@@ -70,10 +70,10 @@ CREATE TABLE `posts` (
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 CREATE TABLE `post_tags` (
-    `model$post_id` BIGINT NOT NULL,
+    `post_id` BIGINT NOT NULL,
     `tags_id` BIGINT NOT NULL,
-    PRIMARY KEY (`model$post_id`, `tags_id`),
-    CONSTRAINT `FK12af4v6mkdjp0askgitum0h4x` FOREIGN KEY (`model$post_id`) REFERENCES `posts` (`id`),
+    PRIMARY KEY (`post_id`, `tags_id`),
+    CONSTRAINT `FK_post_tags_post` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`),
     CONSTRAINT `FKc9w0wcpokniw86jioo5rrb37s` FOREIGN KEY (`tags_id`) REFERENCES `tags` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 

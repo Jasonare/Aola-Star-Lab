@@ -8,16 +8,89 @@
             <div class="admin-tabs" role="tablist"><button class="tab-button active" data-tab="tags-tab">标签管理</button><button class="tab-button" data-tab="review-tab">审核中心</button><button class="tab-button" data-tab="folders-tab">资源目录管理</button></div>
             <section id="tags-tab" class="admin-tab-panel active"><div class="section-header"><h2>标签管理</h2><form class="compact-search" th:action="@{/admin}" method="get"><input name="tagQuery" th:value="${tagQuery}" placeholder="搜索标签"><button class="btn-secondary">搜索</button></form><button class="btn" type="button" data-open-add-tag>新增标签</button></div><form class="add-tag-form" th:action="@{/admin/tags}" method="post" hidden><input name="name" maxlength="40" required placeholder="标签名称"><button>保存标签</button></form><div class="tag-admin-list"><div class="tag-admin-row" th:each="tag,stat : ${tags}"><span class="tag-color" th:classappend="${'tag-color-' + (stat.index % 9)}" th:text="${tag.name}"></span><span class="row-actions tag-actions"><button class="icon-action edit-tag" type="button" title="编辑标签" aria-label="编辑标签" th:attr="data-tag-id=${tag.id},data-tag-name=${tag.name}"><i class="fa fa-pencil" aria-hidden="true"></i></button><form th:action="@{/admin/tags/{id}/delete(id=${tag.id})}" method="post" onsubmit="return confirm('确认删除此标签？')"><button type="submit" class="icon-action danger-action" title="删除标签" aria-label="删除标签"><i class="fa fa-trash-o" aria-hidden="true"></i></button></form></span></div></div></section>
             <section id="review-tab" class="admin-tab-panel"><div class="section-header"><h2>审核中心</h2></div><div class="sub-tabs"><button class="sub-tab active" data-subtab="article-review">文章审核</button><button class="sub-tab" data-subtab="video-review">视频审核</button></div><div id="article-review" class="review-panel active"><div class="review-list"><div class="review-row" th:each="p : ${pendingBlogs}"><a th:href="@{/posts/{id}(id=${p.id})}" th:text="${p.title}"></a><span class="muted" th:text="${p.author.username}"></span><div class="row-actions"><form th:action="@{/admin/review/{id}(id=${p.id})}" method="post"><button name="approve" value="true">通过</button></form><button class="btn-danger-outline reject-open" type="button" th:attr="data-post-id=${p.id}">驳回</button></div></div><div class="empty" th:if="${#lists.isEmpty(pendingBlogs)}">暂无待审核文章。</div></div></div><div id="video-review" class="review-panel"><div class="review-list"><div class="review-row" th:each="p : ${pendingVideos}"><a th:href="@{/posts/{id}(id=${p.id})}" th:text="${p.title}"></a><span class="muted" th:text="${p.author.username}"></span><div class="row-actions"><form th:action="@{/admin/review/{id}(id=${p.id})}" method="post"><button name="approve" value="true">通过</button></form><button class="btn-danger-outline reject-open" type="button" th:attr="data-post-id=${p.id}">驳回</button></div></div><div class="empty" th:if="${#lists.isEmpty(pendingVideos)}">暂无待审核视频。</div></div></div></section>
-            <section id="folders-tab" class="admin-tab-panel"><div class="section-header"><h2>资源目录管理</h2><span class="muted">点击目录后选择操作</span></div><div class="folder-tree"><button type="button" class="folder-node root-node active" data-folder="root"><i class="fa fa-folder-open-o"></i> 根目录</button><div th:each="folder : ${folders}" class="folder-group"><button type="button" class="folder-node" th:attr="data-folder=${folder.id},data-name=${folder.name}"><i class="fa fa-folder-o"></i> <span th:text="${folder.name}"></span></button><button type="button" class="folder-node child-folder-node" th:each="child : ${folder.children}" th:attr="data-folder=${child.id},data-name=${child.name}"><i class="fa fa-folder-o"></i> <span th:text="${child.name}"></span></button></div></div><button class="btn-secondary" type="button" data-open-folder-actions><i class="fa fa-ellipsis-h"></i> 目录操作</button><a class="btn btn-secondary" th:href="@{/resources}"><i class="fa fa-external-link"></i> 前往资源中心</a><form class="admin-resource-upload" th:action="@{/admin/resources}" method="post" enctype="multipart/form-data" hidden><input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><input type="hidden" name="visible" value="false"><label>上传到选中目录<input type="file" name="file" required></label><button type="submit"><i class="fa fa-upload"></i> 上传文件</button></form></section>
+            <section id="folders-tab" class="admin-tab-panel"><div class="section-header"><h2>资源目录管理</h2><span class="muted">点击目录后选择操作</span></div><div class="folder-tree"><button type="button" class="folder-node root-node active" data-folder="root"><i class="fa fa-folder-open-o"></i> 根目录</button><div th:each="folder : ${folders}" class="folder-group"><button type="button" class="folder-node" th:attr="data-folder=${folder.id},data-name=${folder.name}"><i class="fa fa-folder-o"></i> <span th:text="${folder.name}"></span></button><button type="button" class="folder-node child-folder-node" th:each="child : ${folder.children}" th:attr="data-folder=${child.id},data-name=${child.name}"><i class="fa fa-folder-o"></i> <span th:text="${child.name}"></span></button></div></div><button class="btn-secondary" type="button" data-open-folder-actions><i class="fa fa-ellipsis-h"></i> 目录操作</button><a class="btn btn-secondary" th:href="@{/resources}"><i class="fa fa-external-link"></i> 前往资源中心</a><form id="admin-resource-upload" class="admin-resource-upload" th:action="@{/admin/resources}" method="post" enctype="multipart/form-data" hidden><input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><input type="hidden" name="visible" value="false"><label>上传到选中目录（单个文件最大 5GB）<input type="file" name="file" required></label><div id="resource-upload-progress" class="upload-progress" hidden aria-live="polite"><div class="upload-progress-heading"><span id="resource-upload-label">准备上传</span><span id="resource-upload-value">0%</span></div><progress id="resource-upload-bar" max="100" value="0">0%</progress></div><p id="resource-upload-error" class="error" role="alert" hidden></p><button id="resource-upload-submit" type="submit"><i class="fa fa-upload"></i> 上传文件</button></form></section>
         </main>
         <dialog id="reject-dialog"><form method="post" id="reject-form"><h3>填写驳回原因</h3><textarea name="reason" maxlength="500" required placeholder="告诉作者需要修改什么"></textarea><div class="actions"><button type="button" data-close-dialog>取消</button><button class="btn-danger" name="approve" value="false">确认驳回</button></div></form></dialog>
         <dialog id="folder-dialog" class="folder-action-dialog"><h3>目录操作</h3><p class="muted" data-selected-folder>当前选中：根目录</p><div class="folder-action-options"><button type="button" data-folder-action="create"><i class="fa fa-folder-o"></i> 创建子目录</button><button type="button" data-folder-action="upload"><i class="fa fa-upload"></i> 上传文件</button><button type="button" class="btn-secondary" data-folder-action="edit"><i class="fa fa-pencil"></i> 编辑</button><button type="button" class="btn-danger-outline" data-folder-action="delete"><i class="fa fa-trash-o"></i> 删除</button><button type="button" class="btn-secondary" data-folder-action="cancel" onclick="document.getElementById('folder-dialog').close()"><i class="fa fa-times"></i> 取消</button></div></dialog>
         <dialog id="folder-edit-dialog"><form method="post" id="folder-form"><input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><h3>创建目录</h3><label>目录名称<input name="name" maxlength="100" required></label><input type="hidden" name="parentId"><div class="actions"><button type="button" class="btn-secondary" data-close-folder-dialog>取消</button><button>保存</button></div></form></dialog>
         <script>
-            document.querySelectorAll('.tab-button').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.tab-button,.admin-tab-panel').forEach((item) => item.classList.remove('active')); button.classList.add('active'); document.getElementById(button.dataset.tab).classList.add('active'); }));
-            document.querySelectorAll('.sub-tab').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.sub-tab,.review-panel').forEach((item) => item.classList.remove('active')); button.classList.add('active'); document.getElementById(button.dataset.subtab).classList.add('active'); }));
+            const activateAdminTab = (tabId) => {
+                const button = document.querySelector(`.tab-button[data-tab="${tabId}"]`);
+                if (!button) return;
+                document.querySelectorAll('.tab-button,.admin-tab-panel').forEach((item) => item.classList.remove('active'));
+                button.classList.add('active');
+                document.getElementById(tabId).classList.add('active');
+                localStorage.setItem('aola-admin-tab', tabId);
+            };
+            const activateReviewTab = (panelId) => {
+                const button = document.querySelector(`.sub-tab[data-subtab="${panelId}"]`);
+                if (!button) return;
+                document.querySelectorAll('.sub-tab,.review-panel').forEach((item) => item.classList.remove('active'));
+                button.classList.add('active');
+                document.getElementById(panelId).classList.add('active');
+                localStorage.setItem('aola-admin-review-tab', panelId);
+            };
+            document.querySelectorAll('.tab-button').forEach((button) => button.addEventListener('click', () => activateAdminTab(button.dataset.tab)));
+            document.querySelectorAll('.sub-tab').forEach((button) => button.addEventListener('click', () => activateReviewTab(button.dataset.subtab)));
+            activateAdminTab(localStorage.getItem('aola-admin-tab') || 'tags-tab');
+            activateReviewTab(localStorage.getItem('aola-admin-review-tab') || 'article-review');
             const dialog = document.getElementById('reject-dialog'); const form = document.getElementById('reject-form'); document.querySelectorAll('.reject-open').forEach((button) => button.addEventListener('click', () => { form.action = '/admin/review/' + button.dataset.postId; dialog.showModal(); })); document.querySelector('[data-close-dialog]').addEventListener('click', () => dialog.close());
             document.querySelector('[data-open-add-tag]')?.addEventListener('click', () => document.querySelector('.add-tag-form').hidden = false);
+            const resourceUploadForm = document.getElementById('admin-resource-upload');
+            resourceUploadForm.addEventListener('submit', (event) => {
+                const fileInput = resourceUploadForm.querySelector('[name="file"]');
+                const selectedFile = fileInput.files?.[0];
+                if (!selectedFile) return;
+                event.preventDefault();
+                if (selectedFile.size > 5 * 1024 * 1024 * 1024) {
+                    document.getElementById('resource-upload-error').textContent = '单个资源文件不能超过 5GB。';
+                    document.getElementById('resource-upload-error').hidden = false;
+                    return;
+                }
+                const formData = new FormData(resourceUploadForm);
+                const progress = document.getElementById('resource-upload-progress');
+                const progressBar = document.getElementById('resource-upload-bar');
+                const progressValue = document.getElementById('resource-upload-value');
+                const progressLabel = document.getElementById('resource-upload-label');
+                const error = document.getElementById('resource-upload-error');
+                const submit = document.getElementById('resource-upload-submit');
+                error.hidden = true;
+                progress.hidden = false;
+                submit.disabled = true;
+                fileInput.disabled = true;
+                progressLabel.textContent = '正在上传资源';
+                const request = new XMLHttpRequest();
+                request.open('POST', resourceUploadForm.action);
+                request.upload.addEventListener('progress', (progressEvent) => {
+                    if (!progressEvent.lengthComputable) return;
+                    const percent = Math.min(100, Math.round(progressEvent.loaded * 100 / progressEvent.total));
+                    progressBar.value = percent;
+                    progressValue.textContent = percent + '%';
+                });
+                request.addEventListener('load', () => {
+                    if (request.status >= 200 && request.status < 400) {
+                        progressBar.value = 100;
+                        progressValue.textContent = '100%';
+                        progressLabel.textContent = '上传完成，正在打开资源中心';
+                        window.location.assign(request.responseURL || '/admin?tab=folders-tab');
+                        return;
+                    }
+                    const responseText = (request.responseText || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                    error.textContent = `上传失败（HTTP ${request.status}）${responseText ? '：' + responseText.slice(0, 200) : '，服务器未返回错误详情。'}`;
+                    error.hidden = false;
+                    progressLabel.textContent = '上传失败';
+                    submit.disabled = false;
+                    fileInput.disabled = false;
+                });
+                request.addEventListener('error', () => {
+                    error.textContent = '网络连接中断，资源未能上传。请检查网络和服务器请求大小限制后重试。';
+                    error.hidden = false;
+                    progressLabel.textContent = '上传失败';
+                    submit.disabled = false;
+                    fileInput.disabled = false;
+                });
+                request.send(formData);
+            });
             const folderDialog = document.getElementById('folder-dialog');
             const folderForm = document.getElementById('folder-form');
             folderForm.addEventListener('submit', () => {

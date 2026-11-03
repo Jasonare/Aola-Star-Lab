@@ -27,6 +27,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Locale;
 import java.util.NoSuchElementException;
 
@@ -171,6 +172,7 @@ public class SiteController {
     @GetMapping("/posts")
     public String posts(Authentication auth, @RequestParam(required = false) String q,
             @RequestParam(required = false) Long tag, @RequestParam(required = false) Kind kind,
+            @RequestParam(defaultValue = "time") String sort,
             @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate until, Model model) {
         if (from != null && until != null && from.isAfter(until)) {
@@ -191,6 +193,7 @@ public class SiteController {
                 .filter(post -> query.isEmpty() || post.getTitle().toLowerCase(Locale.ROOT).contains(query)
                         || post.getBody() != null && post.getBody().toLowerCase(Locale.ROOT).contains(query))
                 .filter(post -> tag == null || post.getTags().stream().anyMatch(item -> item.getId().equals(tag)))
+                .sorted(postComparator(sort))
                 .toList();
         model.addAttribute("posts", visiblePosts);
         model.addAttribute("postDates", visiblePosts.stream().collect(java.util.stream.Collectors.toMap(
@@ -203,10 +206,22 @@ public class SiteController {
         model.addAttribute("query", q);
         model.addAttribute("selectedTag", tag);
         model.addAttribute("selectedKind", kind);
+        model.addAttribute("selectedSort", sort);
         model.addAttribute("fromDate", from);
         model.addAttribute("untilDate", until);
         model.addAttribute("sectionTitle", kind == Kind.VIDEO ? "视频专区" : kind == Kind.BLOG ? "文章专区" : "内容库");
         return "posts";
+    }
+
+    private Comparator<Post> postComparator(String sort) {
+        return switch (sort == null ? "time" : sort) {
+            case "likes" -> Comparator.comparingLong((Post post) -> postLikes.countByPost(post))
+                    .reversed().thenComparing(Post::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder()));
+            case "views" -> Comparator.comparingLong(Post::getViewCount).reversed()
+                    .thenComparing(Post::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder()));
+            default -> Comparator.comparing(Post::getUpdatedAt,
+                    Comparator.nullsLast(Comparator.reverseOrder()));
+        };
     }
 
     @GetMapping("/posts/new")
@@ -233,13 +248,38 @@ public class SiteController {
     public String save(Authentication auth, @RequestParam(required = false) Long id, @RequestParam Kind kind,
             @RequestParam String title, @RequestParam(required = false) String body,
             @RequestParam Visibility visibility, @RequestParam(required = false) List<Long> tagIds,
+            @RequestParam(required = false, defaultValue = "false") boolean imageSelectionProvided,
+            @RequestParam(required = false) List<Integer> retainedImageIndexes,
             @RequestParam(required = false) List<MultipartFile> files)
             throws IOException {
         User user = current(auth);
         Post post = id == null ? new Post() : service.ownedPost(user, id);
+        List<String> removedImageKeys = new ArrayList<>();
         List<FileStore.Stored> uploaded = new ArrayList<>();
         try {
             List<MultipartFile> incoming = files == null ? List.of() : files.stream().filter(file -> !file.isEmpty()).toList();
+            if (kind == Kind.BLOG) {
+                List<String> originalKeys = new ArrayList<>(post.getImageKeys());
+                List<String> originalTypes = new ArrayList<>(post.getImageTypes());
+                List<Integer> retained = !imageSelectionProvided
+                        ? java.util.stream.IntStream.range(0, originalKeys.size()).boxed().toList()
+                        : retainedImageIndexes == null ? List.of()
+                                : retainedImageIndexes.stream().distinct().filter(index -> index >= 0 && index < originalKeys.size()).sorted().toList();
+                if (retained.size() + incoming.size() > 9) {
+                    throw new IllegalArgumentException("文章最多保留或上传9张图片");
+                }
+                post.getImageKeys().clear();
+                post.getImageTypes().clear();
+                for (Integer index : retained) {
+                    post.getImageKeys().add(originalKeys.get(index));
+                    post.getImageTypes().add(index < originalTypes.size() ? originalTypes.get(index) : "image/jpeg");
+                }
+                for (int index = 0; index < originalKeys.size(); index++) {
+                    if (!retained.contains(index)) {
+                        removedImageKeys.add(originalKeys.get(index));
+                    }
+                }
+            }
             if (kind == Kind.BLOG && incoming.size() > 9) {
                 throw new IllegalArgumentException("文章最多上传9张图片");
             }
@@ -248,8 +288,6 @@ public class SiteController {
             }
             if (kind == Kind.BLOG) {
                 if (!incoming.isEmpty()) {
-                    post.getImageKeys().clear();
-                    post.getImageTypes().clear();
                     for (MultipartFile file : incoming) {
                         if (file.getContentType() == null || !file.getContentType().startsWith("image/")) {
                             throw new IllegalArgumentException("文章仅支持上传图片");
@@ -270,6 +308,9 @@ public class SiteController {
                 post.setFileType(saved.type());
             }
             service.savePost(post, user, kind, title, body, visibility, tagIds);
+            for (String removedImageKey : removedImageKeys) {
+                this.files.delete(removedImageKey);
+            }
         } catch (RuntimeException | IOException e) {
             for (FileStore.Stored file : uploaded) {
                 this.files.delete(file.key());
@@ -282,8 +323,8 @@ public class SiteController {
     @GetMapping("/posts/{id}")
     public String detail(Authentication auth, @PathVariable Long id, Model model) {
         Post post = service.visiblePost(current(auth), id);
-        service.incrementView(post);
         User viewer = current(auth);
+        service.incrementView(post, viewer);
         model.addAttribute("post", post);
         model.addAttribute("postDateLabel", postDateLabel(post));
         model.addAttribute("likeCount", postLikes.countByPost(post));
@@ -556,7 +597,7 @@ public class SiteController {
             files.delete(saved.key());
             throw e;
         }
-        return "redirect:/resources";
+        return "redirect:/admin?tab=folders-tab";
     }
 
     @PostMapping("/admin/resources/{id}/visibility")
