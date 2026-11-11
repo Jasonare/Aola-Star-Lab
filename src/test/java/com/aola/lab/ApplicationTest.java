@@ -604,9 +604,39 @@ class ApplicationTest {
     }
 
     @Test
+    void chroniclePageUsesSharedNavigationAndScopedStaticAssets() throws Exception {
+        mvc.perform(get("/chronicle").with(user("author").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(view().name("chronicle"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("/chronicle/style.css")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("/chronicle/app.js")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("/chronicle/assets/emblem.png")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("奥拉编年史</a>")));
+        mvc.perform(get("/chronicle")).andExpect(status().is3xxRedirection());
+        mvc.perform(get("/chronicle/app.js")).andExpect(status().is3xxRedirection());
+        mvc.perform(get("/lab/chronicle").contextPath("/lab").with(user("author").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("/lab/chronicle/assets/title-source.png")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-asset-base=\"/lab/chronicle/\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("/lab/chronicle/nodes.js")));
+        for (String asset : new String[]{"assets/sky.png", "assets/card.png", "assets/emblem.png", "assets/title-source.png", "nodes.js"}) {
+            mvc.perform(get("/lab/chronicle/" + asset).contextPath("/lab").with(user("author").roles("USER")))
+                    .andExpect(status().isOk());
+        }
+        mvc.perform(get("/chronicle/nodes.js").with(user("author").roles("USER")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("2015")));
+        mvc.perform(get("/chronicle/app.js").with(user("author").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("assetBase")));
+        mvc.perform(get("/chronicle/style.css").with(user("author").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(".chronicle-page .entry .card{max-width:none;")));
+    }
+
+    @Test
     void pagesRenderForAuthenticatedUsers() throws Exception {
         createPost(Review.APPROVED, Visibility.PUBLIC);
-        for (String path : new String[]{"/", "/friends", "/posts", "/posts/new", "/resources"}) {
+        for (String path : new String[]{"/", "/friends", "/posts", "/posts/new", "/resources", "/chronicle"}) {
             mvc.perform(get(path).with(user("author").roles("USER"))).andExpect(status().isOk());
         }
         mvc.perform(get("/admin").with(user("adminuser").roles("ADMIN"))).andExpect(status().isOk());

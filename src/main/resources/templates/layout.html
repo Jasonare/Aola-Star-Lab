@@ -24,6 +24,7 @@
                     <a th:href="@{/works}">个人作品</a>
                     <a th:href="@{/friends}">奥拉伙伴</a>
                     <a th:href="@{/resources}">资源中心</a>
+                    <a th:href="@{/chronicle}">奥拉编年史</a>
                     <a th:if="${currentUser != null and currentUser.admin}" th:href="@{/admin}">管理中心</a>
                 </nav>
                 <div class="account-area" th:if="${currentUser != null}">

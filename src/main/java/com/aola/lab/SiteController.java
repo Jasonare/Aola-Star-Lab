@@ -127,6 +127,11 @@ public class SiteController {
         return "dashboard";
     }
 
+    @GetMapping("/chronicle")
+    public String chronicle() {
+        return "chronicle";
+    }
+
     @GetMapping("/works")
     public String works(Authentication auth, @RequestParam(defaultValue = "BLOG") Kind kind, Model model) {
         User user = current(auth);
