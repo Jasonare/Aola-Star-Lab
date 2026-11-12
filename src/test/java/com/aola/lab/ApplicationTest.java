@@ -316,6 +316,36 @@ class ApplicationTest {
     }
 
     @Test
+    void articleLightboxUsesAuthorizedImageUrlsWithContextPath() throws Exception {
+        Post blog = createPost(Review.PENDING, Visibility.PUBLIC);
+        String path = "/lab/posts/" + blog.getId();
+        String empty = mvc.perform(get(path).contextPath("/lab").with(user("author").roles("USER")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(empty).doesNotContain("id=\"article-lightbox\"");
+
+        blog.getImageKeys().add("first");
+        blog.getImageTypes().add("image/png");
+        posts.saveAndFlush(blog);
+        String single = mvc.perform(get(path).contextPath("/lab").with(user("author").roles("USER")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String firstUrl = "/lab/posts/" + blog.getId() + "/images/0";
+        assertThat(single).contains("id=\"article-lightbox\"", "href=\"" + firstUrl + "\"",
+                "src=\"" + firstUrl + "\"", "aria-haspopup=\"dialog\"")
+                .doesNotContain("download=");
+        blog.getImageKeys().add("second");
+        blog.getImageTypes().add("image/png");
+        posts.saveAndFlush(blog);
+        String multiple = mvc.perform(get(path).contextPath("/lab").with(user("author").roles("USER")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(multiple).contains("/lab/posts/" + blog.getId() + "/images/1", "id=\"lightbox-prev\"",
+                "id=\"lightbox-next\"", "id=\"lightbox-error\"");
+        mvc.perform(get(path).contextPath("/lab").with(user("other").roles("USER")))
+                .andExpect(status().isForbidden());
+        mvc.perform(get(path + "/images/0").contextPath("/lab").with(user("other").roles("USER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void orderedImagesPersistAndRejectInvalidOrders() throws Exception {
         Post blog = createPost(Review.PENDING, Visibility.PUBLIC);
         blog.getImageKeys().add("legacy-first");

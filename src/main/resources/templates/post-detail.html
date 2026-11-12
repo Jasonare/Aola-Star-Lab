@@ -34,7 +34,15 @@
                 </form>
                 <p style="white-space: pre-wrap" th:text="${post.body}">
                 </p>
-                <div class="article-gallery" th:if="${post.kind.name() == 'BLOG' and !#lists.isEmpty(post.imageKeys)}"><a class="image-tile image-lightbox-link" th:each="imageUrl, stat : ${imageUrls}" th:href="${imageUrl}" target="_blank" rel="noopener" aria-label="查看文章原图"><img th:src="${imageUrl}" alt="文章图片" loading="lazy" decoding="async"></a></div>
+                <div class="article-gallery" th:if="${post.kind.name() == 'BLOG' and !#lists.isEmpty(imageUrls)}"><a class="image-tile image-lightbox-link" th:each="imageUrl, stat : ${imageUrls}" th:href="@{${imageUrl}}" th:attr="aria-label='查看第 ' + ${stat.count} + ' 张文章图片'" aria-haspopup="dialog"><img th:src="@{${imageUrl}}" th:alt="'文章图片 ' + ${stat.count}" loading="lazy" decoding="async"></a></div>
+                <dialog class="article-lightbox" id="article-lightbox" aria-label="文章图片浏览" th:if="${post.kind.name() == 'BLOG' and !#lists.isEmpty(imageUrls)}">
+                    <div class="article-lightbox-toolbar"><span id="lightbox-count" aria-live="polite"></span><button type="button" id="lightbox-close" aria-label="关闭图片浏览">关闭</button></div>
+                    <div class="article-lightbox-content">
+                        <button type="button" id="lightbox-prev" aria-label="上一张图片">‹</button>
+                        <div class="article-lightbox-image"><img id="lightbox-image" alt=""><p id="lightbox-error" role="status" hidden>图片加载失败，请稍后重试。</p></div>
+                        <button type="button" id="lightbox-next" aria-label="下一张图片">›</button>
+                    </div>
+                </dialog>
                 <video th:if="${post.fileKey != null and post.kind.name() == 'VIDEO'}" controls preload="metadata" th:src="@{/posts/{id}/file(id=${post.id})}"></video>
                 <p class="post-edit-actions" th:if="${post.author.id == currentUser.id}">
                     <a class="btn edit-resubmit-button" th:href="@{/posts/{id}/edit(id=${post.id})}"><i class="fa fa-pencil-square-o" aria-hidden="true"></i> 修改并重新提交</a>
@@ -59,5 +67,52 @@
                 <form class="comment-compose" th:action="@{/posts/{id}/comments(id=${post.id})}" method="post"><label for="comment-body">发表你的评论</label><textarea id="comment-body" name="body" maxlength="1000" required placeholder="分享你的想法…"></textarea><div class="comment-compose-footer"><span class="muted">最多 1000 字</span><button type="submit"><i class="fa fa-paper-plane-o" aria-hidden="true"></i> 发表评论</button></div></form>
             </section>
         </main>
+        <script>
+            (() => {
+                const dialog = document.getElementById('article-lightbox');
+                if (!dialog || typeof dialog.showModal !== 'function') return;
+                const links = Array.from(document.querySelectorAll('.article-gallery .image-lightbox-link'));
+                const image = document.getElementById('lightbox-image');
+                const error = document.getElementById('lightbox-error');
+                const count = document.getElementById('lightbox-count');
+                const previous = document.getElementById('lightbox-prev');
+                const next = document.getElementById('lightbox-next');
+                const close = document.getElementById('lightbox-close');
+                let index = 0;
+                let opener;
+                function showImage(selected) {
+                    index = (selected + links.length) % links.length;
+                    error.hidden = true;
+                    image.hidden = false;
+                    image.alt = links[index].querySelector('img').alt;
+                    count.textContent = `${index + 1} / ${links.length}`;
+                    image.src = links[index].href;
+                }
+                previous.hidden = next.hidden = links.length < 2;
+                image.addEventListener('error', () => { image.hidden = true; error.hidden = false; });
+                links.forEach((link, selected) => link.addEventListener('click', event => {
+                    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                    event.preventDefault();
+                    opener = link;
+                    showImage(selected);
+                    dialog.showModal();
+                    close.focus();
+                }));
+                previous.addEventListener('click', () => showImage(index - 1));
+                next.addEventListener('click', () => showImage(index + 1));
+                close.addEventListener('click', () => dialog.close());
+                dialog.addEventListener('click', event => {
+                    if (event.target !== dialog) return;
+                    const rect = dialog.getBoundingClientRect();
+                    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close();
+                });
+                dialog.addEventListener('keydown', event => {
+                    if (links.length < 2) return;
+                    if (event.key === 'ArrowLeft') { event.preventDefault(); showImage(index - 1); }
+                    if (event.key === 'ArrowRight') { event.preventDefault(); showImage(index + 1); }
+                });
+                dialog.addEventListener('close', () => { image.removeAttribute('src'); opener.focus(); });
+            })();
+        </script>
     </body>
 </html>
