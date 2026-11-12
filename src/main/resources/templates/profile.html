@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+    <head th:replace="~{layout :: head('个人信息')}"></head>
+    <body>
+        <nav th:replace="~{layout :: nav}"></nav>
+        <main>
+            <div class="page-heading"><div><p class="eyebrow">个人中心</p><h1>个人信息</h1><p class="muted">管理你的账号资料与密码。</p></div></div>
+            <div class="alert" th:if="${param.saved}">个人信息已保存。</div>
+            <section>
+                <div class="section-header"><h2>基本资料</h2></div>
+                <form th:action="@{/profile}" method="post">
+                    <label>用户名<input name="username" th:value="${currentUser.username}" required minlength="3" maxlength="40" autocomplete="username"></label>
+                    <p class="field-hint">3至40位汉字、字母、数字或下划线。更改后需要重新登录；内置管理员不可改名。</p>
+                    <label>个人签名<textarea name="signature" maxlength="200" rows="3" th:text="${currentUser.signature}"></textarea></label>
+                    <p class="field-hint">可留空，最多200字。</p>
+                    <button type="submit">保存资料</button>
+                </form>
+            </section>
+            <section>
+                <div class="section-header"><h2>修改密码</h2></div>
+                <form th:action="@{/profile/password}" method="post">
+                    <label>旧密码<input type="password" name="oldPassword" required autocomplete="current-password"></label>
+                    <label>新密码<input type="password" name="newPassword" required minlength="8" autocomplete="new-password"></label>
+                    <label>确认新密码<input type="password" name="confirmPassword" required minlength="8" autocomplete="new-password"></label>
+                    <p class="field-hint">新密码至少8位且不超过72字节；修改后需要重新登录。</p>
+                    <button type="submit">修改密码</button>
+                </form>
+            </section>
+        </main>
+    </body>
+</html>

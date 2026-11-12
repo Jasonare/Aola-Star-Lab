@@ -48,10 +48,7 @@ public class SecurityConfig {
     @Bean
     UserDetailsService userDetailsService(Users users) {
         return name -> users.findByUsername(name)
-                .map(user -> org.springframework.security.core.userdetails.User.withUsername(user.getUsername())
-                        .password(user.getPassword())
-                        .roles(user.isAdmin() ? "ADMIN" : "USER")
-                        .build())
+                .map(user -> new AccountDetails(user))
                 .orElseThrow(() -> new UsernameNotFoundException("用户不存在"));
     }
 
@@ -60,6 +57,22 @@ public class SecurityConfig {
             AuthenticationDetailsSource<HttpServletRequest, WebAuthenticationDetails> detailsSource,
             AuthenticationProvider loginProvider) throws Exception {
         return http.authenticationProvider(loginProvider)
+                .addFilterBefore(new org.springframework.web.filter.OncePerRequestFilter() {
+                    @Override
+                    protected void doFilterInternal(HttpServletRequest request, jakarta.servlet.http.HttpServletResponse response,
+                            jakarta.servlet.FilterChain chain) throws jakarta.servlet.ServletException, java.io.IOException {
+                        Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+                        if (auth != null && auth.getPrincipal() instanceof AccountDetails details) {
+                            User current = users.findById(details.id).orElse(null);
+                            if (current == null || !current.getUsername().equals(details.getUsername())
+                                    || current.getSecurityVersion() != details.securityVersion) {
+                                new org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler()
+                                        .logout(request, response, auth);
+                            }
+                        }
+                        chain.doFilter(request, response);
+                    }
+                }, org.springframework.security.web.access.intercept.AuthorizationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/css/**", "/images/**", "/login", "/register", "/error").permitAll()
                 .requestMatchers("/admin/**").hasRole("ADMIN")
@@ -85,10 +98,6 @@ public class SecurityConfig {
                 if (!existing.isAdmin()) {
                     throw new IllegalStateException("内置管理员用户名 " + ADMIN_USERNAME + " 已被普通用户占用");
                 }
-                if (!encoder.matches(ADMIN_PASSWORD, existing.getPassword())) {
-                    existing.setPassword(encoder.encode(ADMIN_PASSWORD));
-                    users.save(existing);
-                }
                 return;
             }
             User admin = new User();
@@ -97,6 +106,18 @@ public class SecurityConfig {
             admin.setAdmin(true);
             users.save(admin);
         };
+    }
+
+    static final class AccountDetails extends org.springframework.security.core.userdetails.User {
+        private final Long id;
+        private final long securityVersion;
+
+        AccountDetails(User user) {
+            super(user.getUsername(), user.getPassword(), java.util.List.of(
+                    new org.springframework.security.core.authority.SimpleGrantedAuthority(user.isAdmin() ? "ROLE_ADMIN" : "ROLE_USER")));
+            this.id = user.getId();
+            this.securityVersion = user.getSecurityVersion();
+        }
     }
 
     static final class LoginAuthenticationDetails extends WebAuthenticationDetails {

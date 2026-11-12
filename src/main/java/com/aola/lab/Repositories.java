@@ -14,7 +14,12 @@ import com.aola.lab.Model.PostLike;
 import com.aola.lab.Model.ResourceFile;
 import com.aola.lab.Model.Tag;
 import com.aola.lab.Model.User;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public class Repositories {
     public interface Users extends JpaRepository<User, Long> {
@@ -38,6 +43,10 @@ public class Repositories {
     }
 
     public interface Posts extends JpaRepository<Post, Long> {
+        @Lock(LockModeType.PESSIMISTIC_WRITE)
+        @Query("select p from Post p where p.id = :id")
+        Optional<Post> findByIdForUpdate(@Param("id") Long id);
+
         List<Post> findAllByOrderByUpdatedAtDesc();
 
         List<Post> findByUpdatedAtGreaterThanEqualAndUpdatedAtLessThanOrderByUpdatedAtDesc(
@@ -54,6 +63,10 @@ public class Repositories {
     }
 
     public interface PostLikes extends JpaRepository<PostLike, Long> {
+        @Modifying
+        @Query("delete from PostLike l where l.post.id = :postId")
+        void deleteForPost(@Param("postId") Long postId);
+
         boolean existsByPostAndUser(Post post, User user);
 
         long countByPost(Post post);
@@ -64,6 +77,14 @@ public class Repositories {
     }
 
     public interface Comments extends JpaRepository<Comment, Long> {
+        @Modifying
+        @Query("delete from Comment c where c.post.id = :postId and c.parent is not null")
+        void deleteRepliesForPost(@Param("postId") Long postId);
+
+        @Modifying
+        @Query("delete from Comment c where c.post.id = :postId and c.parent is null")
+        void deleteRootsForPost(@Param("postId") Long postId);
+
         List<Comment> findByPostAndParentIsNullOrderByCreatedAtDesc(Post post);
 
         List<Comment> findByParentOrderByCreatedAtAsc(Comment parent);

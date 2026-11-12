@@ -52,6 +52,12 @@ public class Model {
         @Column(nullable = false, unique = true, length = 40)
         private String username;
 
+        @Column(length = 200)
+        private String signature;
+
+        @Column(nullable = false)
+        private long securityVersion;
+
         @Column(nullable = false)
         private String password;
 
@@ -165,6 +171,40 @@ public class Model {
         @Column(name = "file_type", length = 100)
         private java.util.List<String> imageTypes = new java.util.ArrayList<>();
 
+        @Column(name = "ordered_images", columnDefinition = "TEXT")
+        private String orderedImages;
+
+        private record ImageEntry(String key, String type) {}
+        private static final com.fasterxml.jackson.databind.ObjectMapper IMAGE_MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
+
+        private java.util.List<ImageEntry> orderedImageEntries() {
+            try {
+                return IMAGE_MAPPER.readValue(orderedImages,
+                        IMAGE_MAPPER.getTypeFactory().constructCollectionType(java.util.List.class, ImageEntry.class));
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException("文章图片数据无效", e);
+            }
+        }
+
+        public java.util.List<String> getImageKeys() {
+            return orderedImages == null ? imageKeys : orderedImageEntries().stream().map(ImageEntry::key).toList();
+        }
+
+        public java.util.List<String> getImageTypes() {
+            return orderedImages == null ? imageTypes : orderedImageEntries().stream().map(ImageEntry::type).toList();
+        }
+
+        public void setOrderedImageLists(java.util.List<String> keys, java.util.List<String> types) {
+            if (keys.size() != types.size()) throw new IllegalArgumentException("图片数据无效");
+            java.util.List<ImageEntry> entries = new java.util.ArrayList<>();
+            for (int i = 0; i < keys.size(); i++) entries.add(new ImageEntry(keys.get(i), types.get(i)));
+            try {
+                orderedImages = IMAGE_MAPPER.writeValueAsString(entries);
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                throw new IllegalStateException("无法保存图片数据", e);
+            }
+        }
+
         @ManyToMany
         @JoinTable(name = "post_tags",
                 joinColumns = @JoinColumn(name = "post_id"),
@@ -188,7 +228,7 @@ public class Model {
         }
     }
 
-    @Entity
+    @Entity(name = "PostLike")
     @Table(name = "post_likes", uniqueConstraints = @UniqueConstraint(columnNames = {"post_id", "user_id"}))
     @Getter
     @Setter
@@ -209,7 +249,7 @@ public class Model {
         private LocalDateTime createdAt = LocalDateTime.now();
     }
 
-    @Entity
+    @Entity(name = "Comment")
     @Table(name = "comments")
     @Getter
     @Setter

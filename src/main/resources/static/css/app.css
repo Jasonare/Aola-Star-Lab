@@ -234,6 +234,12 @@ tbody tr:hover { background: #f7fbfb; }
 .image-preview:empty { display: none; }
 .image-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .image-tile { position: relative; min-width: 0; margin: 0; overflow: hidden; aspect-ratio: 1; background: #eef2f7; }
+#saved-image-preview .image-tile { aspect-ratio: auto; overflow: visible; }
+#saved-image-preview .image-tile a { height: auto; }
+.image-tile-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .25rem; padding: .25rem; }
+.image-tile-controls button { min-width: 0; min-height: 2.75rem; padding: .3rem; font-size: .8rem; }
+.image-tile-controls button:last-child { grid-column: 1 / -1; }
+.image-tile-controls button:disabled { opacity: .45; cursor: not-allowed; }
 .image-lightbox-link { display: block; width: 100%; height: 100%; }
 .image-tile img { display: block; width: 100%; height: 100%; aspect-ratio: 1; object-fit: cover; }
 .image-tile a:focus-visible { outline: 3px solid var(--cyan-dark); outline-offset: -3px; }
@@ -327,4 +333,11 @@ tbody tr:hover { background: #f7fbfb; }
 .btn-danger-outline:hover { border-color: var(--danger); background: var(--danger); color: #fff; }
 dialog { width: min(100% - 2rem, 430px); padding: 1.4rem; border: 0; border-radius: 16px; box-shadow: 0 25px 80px rgba(12,24,46,.28); } dialog::backdrop { background: rgba(14,25,46,.45); }
 dialog textarea { min-height: 7rem; }
+.dashboard-heading { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.dashboard-heading h1 { margin: 0; }
+.dashboard-welcome { margin-top: .35rem; color: var(--ink-soft); }
+.donate-dialog { max-height: calc(100dvh - 2rem); overflow: auto; }
+.donate-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.donate-dialog-heading h2 { margin: 0; }
+.donate-dialog img { display: block; width: auto; max-width: 100%; max-height: calc(100dvh - 10rem); margin: auto; object-fit: contain; }
 @media (max-width: 720px) { .section-header .compact-search { width: 100%; margin-left: 0; } .compact-search input { width: 100%; } .tag-admin-row, .review-row { align-items: flex-start; flex-wrap: wrap; } .tag-admin-row .row-actions, .review-row .row-actions { width: 100%; margin-left: 0; } }

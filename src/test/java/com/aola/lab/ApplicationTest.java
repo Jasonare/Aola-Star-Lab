@@ -99,6 +99,91 @@ class ApplicationTest {
         return posts.saveAndFlush(p);
     }
 
+    private org.springframework.mock.web.MockHttpSession loginSession(String username, String password) throws Exception {
+        return (org.springframework.mock.web.MockHttpSession) mvc.perform(post("/login").with(csrf())
+                .param("username", username).param("password", password))
+                .andExpect(header().string("Location", "/"))
+                .andReturn().getRequest().getSession(false);
+    }
+
+    @Test
+    void profileChangesInvalidateAllExistingSessionsAndPreserveIdentity() throws Exception {
+        var first = loginSession("author", "password123");
+        var second = loginSession("author", "password123");
+        Long id = author.getId();
+        mvc.perform(get("/profile").session(first)).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("个人信息")));
+        mvc.perform(post("/profile").session(first).param("username", "新名字123").param("signature", "签名"))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/profile").session(first).with(csrf()).param("username", "新名字123").param("signature", "签名"))
+                .andExpect(header().string("Location", "/login?changed"));
+        assertThat(service.user("新名字123").getId()).isEqualTo(id);
+        assertThat(service.user("新名字123").getSignature()).isEqualTo("签名");
+        service.register("author", "password123");
+        mvc.perform(get("/profile").session(second)).andExpect(status().is3xxRedirection());
+        var renamed = loginSession("新名字123", "password123");
+        mvc.perform(post("/profile").session(renamed).with(csrf()).param("username", "新名字123").param("signature", ""))
+                .andExpect(header().string("Location", "/profile?saved"));
+        assertThat(service.user("新名字123").getSignature()).isNull();
+        mvc.perform(get("/profile").session(renamed)).andExpect(status().isOk());
+    }
+
+    @Test
+    void passwordChangesRequireOldPasswordAndInvalidateOtherSessions() throws Exception {
+        var first = loginSession("author", "password123");
+        var second = loginSession("author", "password123");
+        mvc.perform(post("/profile/password").session(first).with(csrf()).param("oldPassword", "wrong")
+                .param("newPassword", "newpassword123").param("confirmPassword", "newpassword123"))
+                .andExpect(status().isBadRequest()).andExpect(content().string(org.hamcrest.Matchers.containsString("旧密码不正确")));
+        mvc.perform(post("/profile/password").session(first).with(csrf()).param("oldPassword", "password123")
+                .param("newPassword", "newpassword123").param("confirmPassword", "newpassword123"))
+                .andExpect(header().string("Location", "/login?changed"));
+        mvc.perform(get("/profile").session(second)).andExpect(status().is3xxRedirection());
+        mvc.perform(post("/login").with(csrf()).param("username", "author").param("password", "password123"))
+                .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("/login?error")));
+        loginSession("author", "newpassword123");
+    }
+
+    @Test
+    void profileRejectsInvalidNamesAndProtectsBuiltInAdmin() throws Exception {
+        mvc.perform(post("/profile").with(user("author")).with(csrf()).param("username", "other"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/profile").with(user("author")).with(csrf()).param("username", "坏!名字"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/profile").with(user("author")).with(csrf()).param("username", "author")
+                .param("signature", "长".repeat(201))).andExpect(status().isBadRequest());
+        mvc.perform(post("/profile").with(user("aolaAdmin").roles("ADMIN")).with(csrf()).param("username", "renamedAdmin"))
+                .andExpect(status().isBadRequest());
+        String original = service.user("aolaAdmin").getPassword();
+        service.changePassword(service.user("aolaAdmin"), "aolaResource", "newpassword123");
+        new SecurityConfig().bootstrapAdmin(users, new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder()).run(null);
+        assertThat(service.user("aolaAdmin").getPassword()).isNotEqualTo(original);
+        assertThat(new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder()
+                .matches("newpassword123", service.user("aolaAdmin").getPassword())).isTrue();
+    }
+
+    @Test
+    void chineseUsernamesCanRegisterAndLogin() throws Exception {
+        mvc.perform(post("/register").with(csrf()).param("username", "奥拉伙伴123")
+                .param("password", "password123"))
+                .andExpect(status().is3xxRedirection());
+        assertThat(service.user("奥拉伙伴123").getUsername()).isEqualTo("奥拉伙伴123");
+        mvc.perform(post("/register").with(csrf()).param("username", "奥拉伙伴123")
+                .param("password", "password123"))
+                .andExpect(status().isBadRequest());
+        var login = mvc.perform(post("/login").with(csrf()).param("username", "奥拉伙伴123")
+                .param("password", "password123"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(header().string("Location", "/"))
+                .andReturn();
+        mvc.perform(get("/").session((org.springframework.mock.web.MockHttpSession) login.getRequest().getSession(false)))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("奥拉伙伴123")));
+        mvc.perform(post("/register").with(csrf()).param("username", "奥拉!伙伴")
+                .param("password", "password123"))
+                .andExpect(status().isBadRequest());
+    }
+
     @Test
     void registrationCannotCreateAdminAndCsrfIsRequired() throws Exception {
         mvc.perform(post("/register").param("username", "newuser").param("password", "password123")
@@ -229,6 +314,44 @@ class ApplicationTest {
                 .andExpect(status().is3xxRedirection());
         assertThat(posts.findById(blog.getId()).orElseThrow().getImageKeys()).isEmpty();
     }
+
+    @Test
+    void orderedImagesPersistAndRejectInvalidOrders() throws Exception {
+        Post blog = createPost(Review.PENDING, Visibility.PUBLIC);
+        blog.getImageKeys().add("legacy-first");
+        blog.getImageTypes().add("image/png");
+        blog.getImageKeys().add("legacy-second");
+        blog.getImageTypes().add("image/jpeg");
+        posts.saveAndFlush(blog);
+        Long id = blog.getId();
+        entityManager.clear();
+        assertThat(posts.findById(id).orElseThrow().getOrderedImages()).isNull();
+        MockMultipartFile image = new MockMultipartFile("files", "new.png", "image/png",
+                new byte[]{(byte) 137, 80, 78, 71, 13, 10, 26, 10, 1});
+        mvc.perform(multipart("/posts/save").file(image).with(user("author").roles("USER")).with(csrf())
+                .param("id", id.toString()).param("kind", "BLOG").param("title", "排序")
+                .param("visibility", "PUBLIC").param("imageOrderProvided", "true")
+                .param("imageOrder", "old:1", "new:0", "old:0"))
+                .andExpect(status().is3xxRedirection());
+        posts.flush();
+        entityManager.clear();
+        Post reloaded = posts.findById(id).orElseThrow();
+        assertThat(reloaded.getImageKeys()).hasSize(3);
+        assertThat(reloaded.getImageKeys().get(0)).isEqualTo("legacy-second");
+        assertThat(reloaded.getImageKeys().get(2)).isEqualTo("legacy-first");
+        assertThat(reloaded.getImageTypes()).containsExactly("image/jpeg", "image/png", "image/png");
+        String newKey = reloaded.getImageKeys().get(1);
+        mvc.perform(multipart("/posts/save").with(user("author").roles("USER")).with(csrf())
+                .param("id", id.toString()).param("kind", "BLOG").param("title", "排序")
+                .param("visibility", "PUBLIC").param("imageOrderProvided", "true")
+                .param("imageOrder", "old:0", "old:0"))
+                .andExpect(status().isBadRequest());
+        assertThat(posts.findById(id).orElseThrow().getImageKeys()).containsExactly("legacy-second", newKey, "legacy-first");
+        files.delete(newKey);
+    }
+
+    @jakarta.persistence.PersistenceContext
+    jakarta.persistence.EntityManager entityManager;
 
     @Test
     void videoEndpointSupportsByteRangesAfterVisibilityCheck() throws Exception {
@@ -588,6 +711,92 @@ class ApplicationTest {
     }
 
     @Test
+    void deletingAnotherUsersPostIsForbidden() throws Exception {
+        Post post = createPost(Review.APPROVED, Visibility.PUBLIC);
+        service.toggleLike(other, post.getId());
+        service.comment(other, post.getId(), null, "评论");
+        mvc.perform(post("/posts/{id}/delete", post.getId()).with(user("other").roles("USER")).with(csrf()))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/posts/{id}/delete", post.getId()).with(user("adminuser").roles("ADMIN")).with(csrf()))
+                .andExpect(status().isForbidden());
+        assertThat(posts.existsById(post.getId())).isTrue();
+        assertThat(postLikes.countByPost(post)).isEqualTo(1);
+    }
+
+    @Test
+    void deletingPostRemovesInteractionsAndFilesOnlyAfterCommit() throws Exception {
+        var image = files.save(new MockMultipartFile("file", "image.png", "image/png",
+                new byte[]{(byte) 137, 80, 78, 71, 13, 10, 26, 10, 1}), "image");
+        var video = files.save(new MockMultipartFile("file", "clip.mp4", "video/mp4",
+                new byte[]{0, 0, 0, 16, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm', 1, 2, 3, 4,
+                        0, 0, 0, 9, 'm', 'd', 'a', 't', 5, 0, 0, 0, 8, 'm', 'o', 'o', 'v'}), "video");
+        Post post = createPost(Review.APPROVED, Visibility.PUBLIC);
+        post.setKind(Kind.VIDEO);
+        post.setFileKey(video.key());
+        post.getImageKeys().add(image.key());
+        post.getImageTypes().add(image.type());
+        post.setOrderedImageLists(java.util.List.of(image.key()), java.util.List.of(image.type()));
+        Tag tag = new Tag();
+        tag.setName("删除测试标签");
+        tags.saveAndFlush(tag);
+        post.getTags().add(tag);
+        posts.saveAndFlush(post);
+        Long id = post.getId();
+        Long authorId = author.getId(), otherId = other.getId(), adminId = admin.getId(), tagId = tag.getId();
+        service.toggleLike(other, id);
+        service.comment(other, id, null, "一级评论");
+        Long parentId = comments.findByPostAndParentIsNullOrderByCreatedAtDesc(post).get(0).getId();
+        service.comment(author, id, parentId, "回复");
+        org.springframework.test.context.transaction.TestTransaction.flagForCommit();
+        org.springframework.test.context.transaction.TestTransaction.end();
+        try {
+            org.springframework.test.context.transaction.TestTransaction.start();
+            service.deletePost(author, id);
+            posts.flush();
+            assertThat(files.load(image.key()).exists()).isTrue();
+            assertThat(files.load(video.key()).exists()).isTrue();
+            org.springframework.test.context.transaction.TestTransaction.flagForRollback();
+            org.springframework.test.context.transaction.TestTransaction.end();
+            assertThat(posts.existsById(id)).isTrue();
+            assertThat(files.load(image.key()).exists()).isTrue();
+            assertThat(files.load(video.key()).exists()).isTrue();
+
+            org.springframework.test.context.transaction.TestTransaction.start();
+            mvc.perform(post("/posts/{id}/delete", id).with(user("author").roles("USER")).with(csrf()))
+                    .andExpect(header().string("Location", "/works?kind=VIDEO"));
+            posts.flush();
+            assertThat(files.load(image.key()).exists()).isTrue();
+            assertThat(files.load(video.key()).exists()).isTrue();
+            org.springframework.test.context.transaction.TestTransaction.flagForCommit();
+            org.springframework.test.context.transaction.TestTransaction.end();
+            assertThat(posts.existsById(id)).isFalse();
+            assertThat(jdbc.queryForObject("select count(*) from post_likes where post_id = ?", Long.class, id)).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from comments where post_id = ?", Long.class, id)).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from post_tags where post_id = ?", Long.class, id)).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from post_images where post_id = ?", Long.class, id)).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from post_image_types where post_id = ?", Long.class, id)).isZero();
+            assertThatThrownBy(() -> files.load(image.key())).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> files.load(video.key())).isInstanceOf(IllegalArgumentException.class);
+        } finally {
+            if (org.springframework.test.context.transaction.TestTransaction.isActive()) {
+                org.springframework.test.context.transaction.TestTransaction.flagForRollback();
+                org.springframework.test.context.transaction.TestTransaction.end();
+            }
+            if (posts.existsById(id)) service.deletePost(author, id);
+            tags.deleteById(tagId);
+            users.deleteAllById(java.util.List.of(authorId, otherId, adminId));
+            files.delete(image.key());
+            files.delete(video.key());
+            org.springframework.test.context.transaction.TestTransaction.start();
+        }
+    }
+
+    @Autowired
+    Repositories.Comments comments;
+    @Autowired
+    org.springframework.jdbc.core.JdbcTemplate jdbc;
+
+    @Test
     void missingRecordsReturnFriendlyNotFound() throws Exception {
         mvc.perform(get("/posts/{id}", Long.MAX_VALUE).with(user("author").roles("USER")))
                 .andExpect(status().isNotFound()).andExpect(view().name("problem"))
@@ -631,6 +840,26 @@ class ApplicationTest {
         mvc.perform(get("/chronicle/style.css").with(user("author").roles("USER")))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(".chronicle-page .entry .card{max-width:none;")));
+    }
+
+    @Test
+    void dashboardRendersDonationDialogAndServesQrCode() throws Exception {
+        mvc.perform(get("/lab/").contextPath("/lab").with(user("author").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(view().name("dashboard"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("id=\"donate-open\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<dialog id=\"donate-dialog\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("aria-labelledby=\"donate-title\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("id=\"donate-close\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("/lab/images/donate-qrcode.png")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("donateDialog.showModal()")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("donateDialog.close()")));
+        byte[] image = new org.springframework.core.io.ClassPathResource("static/images/donate-qrcode.png")
+                .getInputStream().readAllBytes();
+        mvc.perform(get("/lab/images/donate-qrcode.png").contextPath("/lab").with(user("author").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("image/png"))
+                .andExpect(content().bytes(image));
     }
 
     @Test

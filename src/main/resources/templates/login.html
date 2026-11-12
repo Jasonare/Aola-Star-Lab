@@ -9,6 +9,7 @@
             <div class="alert alert-danger" th:if="${param.error}">用户名、密码或管理员验证码错误。</div>
             <div class="alert" th:if="${param.registered}">个人账号注册成功，请登录。</div>
             <div class="alert" th:if="${param.logout}">你已安全退出。</div>
+            <div class="alert" th:if="${param.changed}">账号信息已更新，请重新登录。</div>
             <form th:action="@{/login}" method="post" id="login-form">
                 <fieldset class="role-picker">
                     <legend>登录身份</legend>

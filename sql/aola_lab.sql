@@ -9,6 +9,8 @@ CREATE TABLE `app_users` (
     `id` BIGINT NOT NULL AUTO_INCREMENT,
     `username` VARCHAR(40) NOT NULL,
     `password` VARCHAR(255) NOT NULL,
+    `signature` VARCHAR(200) NULL,
+    `security_version` BIGINT NOT NULL DEFAULT 0,
     `admin` BIT NOT NULL,
     PRIMARY KEY (`id`),
     CONSTRAINT `UKspsnwr241e9k9c8p5xl4k45ih` UNIQUE (`username`)
@@ -62,6 +64,7 @@ CREATE TABLE `posts` (
     `rejection_reason` VARCHAR(500),
     `file_key` VARCHAR(100),
     `file_type` VARCHAR(100),
+    `ordered_images` TEXT,
     `view_count` BIGINT NOT NULL DEFAULT 0,
     `created_at` DATETIME(6) NOT NULL,
     `updated_at` DATETIME(6) NOT NULL,

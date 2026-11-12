@@ -35,9 +35,11 @@ public class LabService {
     private final Comments comments;
     private final PostLikes postLikes;
     private final PasswordEncoder encoder;
+    private final FileStore files;
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(LabService.class);
 
     public LabService(Users users, Friendships friendships, Posts posts, Tags tags, Comments comments,
-            PostLikes postLikes, PasswordEncoder encoder) {
+            PostLikes postLikes, PasswordEncoder encoder, FileStore files) {
         this.users = users;
         this.friendships = friendships;
         this.posts = posts;
@@ -45,6 +47,7 @@ public class LabService {
         this.comments = comments;
         this.postLikes = postLikes;
         this.encoder = encoder;
+        this.files = files;
     }
 
     public User user(String name) {
@@ -52,12 +55,12 @@ public class LabService {
     }
 
     public void register(String username, String password) {
-        if (SecurityConfig.ADMIN_USERNAME.equals(username)) {
+        if (SecurityConfig.ADMIN_USERNAME.equalsIgnoreCase(username)) {
             throw new IllegalArgumentException("该用户名为内置管理员账号，不能公开注册");
         }
-        if (username == null || !username.matches("[A-Za-z0-9_]{3,40}") || password == null
+        if (username == null || !username.matches("[A-Za-z0-9_\\u4e00-\\u9fff]{3,40}") || password == null
                 || password.length() < 8 || password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72) {
-            throw new IllegalArgumentException("用户名需为3至40位字母、数字或下划线，密码需为8至72位");
+            throw new IllegalArgumentException("用户名需为3至40位汉字、字母、数字或下划线，密码至少8位且不超过72字节");
         }
         if (users.existsByUsername(username)) {
             throw new IllegalArgumentException("用户名已存在");
@@ -66,7 +69,45 @@ public class LabService {
         user.setUsername(username);
         user.setPassword(encoder.encode(password));
         user.setAdmin(false);
-        users.save(user);
+        users.saveAndFlush(user);
+    }
+
+    public void updateProfile(User user, String username, String signature) {
+        String normalized = username == null ? "" : username.trim();
+        if (!normalized.matches("[A-Za-z0-9_\\u4e00-\\u9fff]{3,40}")) {
+            throw new IllegalArgumentException("用户名需为3至40位汉字、字母、数字或下划线");
+        }
+        if (user.isAdmin() && SecurityConfig.ADMIN_USERNAME.equalsIgnoreCase(user.getUsername())
+                && !SecurityConfig.ADMIN_USERNAME.equals(normalized)) {
+            throw new IllegalArgumentException("内置管理员账号不能更改用户名");
+        }
+        if (users.findByUsername(normalized).filter(existing -> !existing.getId().equals(user.getId())).isPresent()
+                || SecurityConfig.ADMIN_USERNAME.equalsIgnoreCase(normalized)
+                        && !SecurityConfig.ADMIN_USERNAME.equals(user.getUsername())) {
+            throw new IllegalArgumentException("用户名已存在");
+        }
+        if (signature != null && signature.length() > 200) {
+            throw new IllegalArgumentException("个人签名不能超过200字");
+        }
+        if (!user.getUsername().equals(normalized)) {
+            user.setSecurityVersion(user.getSecurityVersion() + 1);
+        }
+        user.setUsername(normalized);
+        user.setSignature(signature == null || signature.isBlank() ? null : signature.trim());
+        users.saveAndFlush(user);
+    }
+
+    public void changePassword(User user, String oldPassword, String newPassword) {
+        if (oldPassword == null || !encoder.matches(oldPassword, user.getPassword())) {
+            throw new IllegalArgumentException("旧密码不正确");
+        }
+        if (newPassword == null || newPassword.length() < 8
+                || newPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72) {
+            throw new IllegalArgumentException("新密码至少8位且不超过72字节");
+        }
+        user.setPassword(encoder.encode(newPassword));
+        user.setSecurityVersion(user.getSecurityVersion() + 1);
+        users.saveAndFlush(user);
     }
 
     private Optional<Friendship> relation(User a, User b) {
@@ -161,7 +202,10 @@ public class LabService {
     }
 
     public void comment(User user, Long postId, Long parentId, String body) {
-        Post p = visiblePost(user, postId);
+        Post p = posts.findByIdForUpdate(postId).orElseThrow();
+        if (!canView(user, p)) {
+            throw new AccessDeniedException("无权访问");
+        }
         if (p.getReview() != Review.APPROVED) {
             throw new IllegalArgumentException("仅已审核内容可评论");
         }
@@ -184,7 +228,10 @@ public class LabService {
     }
 
     public boolean toggleLike(User user, Long postId) {
-        Post post = visiblePost(user, postId);
+        Post post = posts.findByIdForUpdate(postId).orElseThrow();
+        if (!canView(user, post)) {
+            throw new AccessDeniedException("无权访问");
+        }
         if (post.getReview() != Review.APPROVED) {
             throw new IllegalArgumentException("仅已审核内容可点赞");
         }
@@ -198,6 +245,36 @@ public class LabService {
         like.setUser(user);
         postLikes.save(like);
         return true;
+    }
+
+    public Kind deletePost(User user, Long id) {
+        Post post = posts.findByIdForUpdate(id).orElseThrow();
+        if (!post.getAuthor().getId().equals(user.getId())) {
+            throw new AccessDeniedException("无权修改");
+        }
+        var keys = new java.util.LinkedHashSet<String>(post.getImageKeys());
+        if (post.getFileKey() != null) {
+            keys.add(post.getFileKey());
+        }
+        postLikes.deleteForPost(id);
+        comments.deleteRepliesForPost(id);
+        comments.deleteRootsForPost(id);
+        Kind kind = post.getKind();
+        posts.delete(post);
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        for (String key : keys) {
+                            try {
+                                files.delete(key);
+                            } catch (RuntimeException | java.io.IOException e) {
+                                log.warn("清理已删除作品的文件失败: {}", key, e);
+                            }
+                        }
+                    }
+                });
+        return kind;
     }
 
     public void incrementView(Post post, User viewer) {

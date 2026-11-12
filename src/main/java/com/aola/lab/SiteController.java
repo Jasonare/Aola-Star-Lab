@@ -103,8 +103,46 @@ public class SiteController {
 
     @PostMapping("/register")
     public String register(@RequestParam String username, @RequestParam String password) {
-        service.register(username, password);
+        try {
+            service.register(username, password);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            throw new IllegalArgumentException("用户名已存在或数据不符合要求");
+        }
         return "redirect:/login?registered";
+    }
+
+    @GetMapping("/profile")
+    public String profile() {
+        return "profile";
+    }
+
+    @PostMapping("/profile")
+    public String updateProfile(Authentication auth, @RequestParam String username,
+            @RequestParam(required = false) String signature, jakarta.servlet.http.HttpServletRequest request,
+            HttpServletResponse response) {
+        User user = current(auth);
+        String oldName = user.getUsername();
+        try {
+            service.updateProfile(user, username, signature);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            throw new IllegalArgumentException("用户名已存在或数据不符合要求");
+        }
+        if (!oldName.equals(user.getUsername())) {
+            new org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler().logout(request, response, auth);
+            return "redirect:/login?changed";
+        }
+        return "redirect:/profile?saved";
+    }
+
+    @PostMapping("/profile/password")
+    public String changePassword(Authentication auth, @RequestParam String oldPassword, @RequestParam String newPassword,
+            @RequestParam String confirmPassword, jakarta.servlet.http.HttpServletRequest request, HttpServletResponse response) {
+        if (!newPassword.equals(confirmPassword)) {
+            throw new IllegalArgumentException("两次输入的新密码不一致");
+        }
+        service.changePassword(current(auth), oldPassword, newPassword);
+        new org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler().logout(request, response, auth);
+        return "redirect:/login?changed";
     }
 
     @GetMapping("/")
@@ -255,6 +293,8 @@ public class SiteController {
             @RequestParam Visibility visibility, @RequestParam(required = false) List<Long> tagIds,
             @RequestParam(required = false, defaultValue = "false") boolean imageSelectionProvided,
             @RequestParam(required = false) List<Integer> retainedImageIndexes,
+            @RequestParam(required = false, defaultValue = "false") boolean imageOrderProvided,
+            @RequestParam(required = false) List<String> imageOrder,
             @RequestParam(required = false) List<MultipartFile> files)
             throws IOException {
         User user = current(auth);
@@ -266,45 +306,54 @@ public class SiteController {
             if (kind == Kind.BLOG) {
                 List<String> originalKeys = new ArrayList<>(post.getImageKeys());
                 List<String> originalTypes = new ArrayList<>(post.getImageTypes());
-                List<Integer> retained = !imageSelectionProvided
-                        ? java.util.stream.IntStream.range(0, originalKeys.size()).boxed().toList()
-                        : retainedImageIndexes == null ? List.of()
-                                : retainedImageIndexes.stream().distinct().filter(index -> index >= 0 && index < originalKeys.size()).sorted().toList();
-                if (retained.size() + incoming.size() > 9) {
-                    throw new IllegalArgumentException("文章最多保留或上传9张图片");
+                List<String> order = new ArrayList<>();
+                if (imageOrderProvided) {
+                    if (imageOrder != null) order.addAll(imageOrder);
+                } else {
+                    List<Integer> retained = !imageSelectionProvided
+                            ? java.util.stream.IntStream.range(0, originalKeys.size()).boxed().toList()
+                            : retainedImageIndexes == null ? List.of()
+                                    : retainedImageIndexes.stream().distinct().filter(index -> index >= 0 && index < originalKeys.size()).sorted().toList();
+                    retained.forEach(index -> order.add("old:" + index));
+                    for (int i = 0; i < incoming.size(); i++) order.add("new:" + i);
                 }
-                post.getImageKeys().clear();
-                post.getImageTypes().clear();
-                for (Integer index : retained) {
-                    post.getImageKeys().add(originalKeys.get(index));
-                    post.getImageTypes().add(index < originalTypes.size() ? originalTypes.get(index) : "image/jpeg");
+                if (order.size() > 9) throw new IllegalArgumentException("文章最多保留或上传9张图片");
+                java.util.Set<Integer> oldIndexes = new java.util.HashSet<>();
+                java.util.Set<Integer> newIndexes = new java.util.HashSet<>();
+                for (String item : order) {
+                    if (item == null || !item.matches("(old|new):[0-9]{1,3}")) throw new IllegalArgumentException("图片顺序无效");
+                    boolean old = item.startsWith("old:");
+                    int index = Integer.parseInt(item.substring(4));
+                    if (index >= (old ? originalKeys.size() : incoming.size())
+                            || !(old ? oldIndexes : newIndexes).add(index)) throw new IllegalArgumentException("图片顺序无效");
                 }
-                for (int index = 0; index < originalKeys.size(); index++) {
-                    if (!retained.contains(index)) {
-                        removedImageKeys.add(originalKeys.get(index));
+                if (newIndexes.size() != incoming.size()) throw new IllegalArgumentException("图片顺序无效");
+                for (MultipartFile file : incoming) {
+                    if (file.getContentType() == null || !file.getContentType().startsWith("image/")) {
+                        throw new IllegalArgumentException("文章仅支持上传图片");
+                    }
+                    uploaded.add(this.files.save(file, "image"));
+                }
+                List<String> keys = new ArrayList<>();
+                List<String> types = new ArrayList<>();
+                for (String item : order) {
+                    int index = Integer.parseInt(item.substring(4));
+                    if (item.startsWith("old:")) {
+                        keys.add(originalKeys.get(index));
+                        types.add(index < originalTypes.size() ? originalTypes.get(index) : "image/jpeg");
+                    } else {
+                        keys.add(uploaded.get(index).key());
+                        types.add(uploaded.get(index).type());
                     }
                 }
-            }
-            if (kind == Kind.BLOG && incoming.size() > 9) {
-                throw new IllegalArgumentException("文章最多上传9张图片");
-            }
-            if (kind == Kind.VIDEO && incoming.size() > 1) {
-                throw new IllegalArgumentException("视频只能上传一个MP4文件");
-            }
-            if (kind == Kind.BLOG) {
-                if (!incoming.isEmpty()) {
-                    for (MultipartFile file : incoming) {
-                        if (file.getContentType() == null || !file.getContentType().startsWith("image/")) {
-                            throw new IllegalArgumentException("文章仅支持上传图片");
-                        }
-                        FileStore.Stored saved = this.files.save(file, "image");
-                        uploaded.add(saved);
-                        post.getImageKeys().add(saved.key());
-                        post.getImageTypes().add(saved.type());
-                    }
+                for (int i = 0; i < originalKeys.size(); i++) {
+                    if (!oldIndexes.contains(i)) removedImageKeys.add(originalKeys.get(i));
                 }
+                post.setOrderedImageLists(keys, types);
                 post.setFileKey(null);
                 post.setFileType(null);
+            } else if (incoming.size() > 1) {
+                throw new IllegalArgumentException("视频只能上传一个MP4文件");
             } else if (!incoming.isEmpty()) {
                 MultipartFile file = incoming.get(0);
                 FileStore.Stored saved = this.files.save(file, "video");
@@ -313,14 +362,19 @@ public class SiteController {
                 post.setFileType(saved.type());
             }
             service.savePost(post, user, kind, title, body, visibility, tagIds);
-            for (String removedImageKey : removedImageKeys) {
-                this.files.delete(removedImageKey);
-            }
         } catch (RuntimeException | IOException e) {
             for (FileStore.Stored file : uploaded) {
                 this.files.delete(file.key());
             }
             throw e;
+        }
+        for (String removedImageKey : removedImageKeys) {
+            try {
+                this.files.delete(removedImageKey);
+            } catch (RuntimeException | IOException e) {
+                org.slf4j.LoggerFactory.getLogger(SiteController.class)
+                        .warn("清理已移除的文章图片失败: {}", removedImageKey, e);
+            }
         }
         return "redirect:/posts/" + post.getId() + "?published";
     }
@@ -367,16 +421,9 @@ public class SiteController {
     }
 
     @PostMapping("/posts/{id}/delete")
-    public String deletePost(Authentication auth, @PathVariable Long id) throws IOException {
-        Post post = service.ownedPost(current(auth), id);
-        if (post.getFileKey() != null) {
-            files.delete(post.getFileKey());
-        }
-        for (String imageKey : post.getImageKeys()) {
-            files.delete(imageKey);
-        }
-        posts.delete(post);
-        return "redirect:/works?kind=" + post.getKind().name();
+    public String deletePost(Authentication auth, @PathVariable Long id) {
+        Kind kind = service.deletePost(current(auth), id);
+        return "redirect:/works?kind=" + kind.name();
     }
 
     @GetMapping("/posts/{id}/file")
@@ -459,9 +506,9 @@ public class SiteController {
         }
         String key = post.getImageKeys().get(index);
         return ResponseEntity.ok()
-                .cacheControl(CacheControl.maxAge(1, java.util.concurrent.TimeUnit.HOURS).cachePrivate())
+                .cacheControl(CacheControl.noStore())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
-                .contentType(MediaType.parseMediaType(post.getImageTypes().get(index)))
+                .contentType(MediaType.parseMediaType(index < post.getImageTypes().size() ? post.getImageTypes().get(index) : "image/jpeg"))
                 .body(files.load(key));
     }
 

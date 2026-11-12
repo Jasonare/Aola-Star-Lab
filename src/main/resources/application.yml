@@ -12,7 +12,7 @@ spring:
     password: '${DB_PASSWORD:}'
   jpa:
     hibernate:
-      ddl-auto: '${DB_DDL_AUTO:update}'
+      ddl-auto: '${DB_DDL_AUTO:none}'
     open-in-view: true
   thymeleaf:
     prefix: classpath:/templates/

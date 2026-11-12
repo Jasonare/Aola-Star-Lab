@@ -4,8 +4,18 @@
     <body>
         <nav th:replace="~{layout :: nav}"></nav>
         <main>
-            <h1>个人仪表盘</h1>
-            <p>欢迎回来，<span th:text="${currentUser.username}"></span></p>
+            <div class="dashboard-heading">
+                <h1>个人仪表盘</h1>
+                <button type="button" class="btn" id="donate-open" aria-haspopup="dialog" aria-controls="donate-dialog">打赏</button>
+            </div>
+            <p class="dashboard-welcome">欢迎回来，<span th:text="${currentUser.username}"></span></p>
+            <dialog id="donate-dialog" class="donate-dialog" aria-labelledby="donate-title">
+                <div class="donate-dialog-heading">
+                    <h2 id="donate-title">感谢支持</h2>
+                    <button type="button" class="icon-action" id="donate-close" aria-label="关闭打赏弹窗" autofocus>×</button>
+                </div>
+                <img th:src="@{/images/donate-qrcode.png}" alt="微信支付打赏收款二维码">
+            </dialog>
             <section>
                 <div class="section-header"><h2>我的内容</h2><span class="badge">持续更新</span></div>
                 <div class="stats-grid">
@@ -28,6 +38,17 @@
                 <ul><li th:each="log : ${logs}" th:text="${#temporals.format(log.loggedAt, 'yyyy-MM-dd HH:mm:ss')}"></li></ul>
             </section>
         </main>
+        <script>
+            const donateDialog = document.getElementById('donate-dialog');
+            document.getElementById('donate-open').addEventListener('click', () => donateDialog.showModal());
+            document.getElementById('donate-close').addEventListener('click', () => donateDialog.close());
+            donateDialog.addEventListener('click', (event) => {
+                if (event.target !== donateDialog) return;
+                const rect = donateDialog.getBoundingClientRect();
+                if (event.clientX < rect.left || event.clientX > rect.right ||
+                    event.clientY < rect.top || event.clientY > rect.bottom) donateDialog.close();
+            });
+        </script>
         <script th:if="${showLoginWelcome}">
             alert("这里是Aola Star Lab，是一个奥拉星怀旧社区网站，目前包括发布文章、发布视频、资源下载等功能，后续会持续更新，感谢大家的支持！开发者：Jasonare");
         </script>
