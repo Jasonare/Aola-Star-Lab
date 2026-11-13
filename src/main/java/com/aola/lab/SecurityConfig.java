@@ -77,6 +77,14 @@ public class SecurityConfig {
                 .requestMatchers("/css/**", "/images/**", "/login", "/register", "/error").permitAll()
                 .requestMatchers("/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated())
+                .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint((request, response, exception) -> {
+                    if (request.getRequestURI().equals(request.getContextPath() + "/chronicle/api")) {
+                        response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+                    } else {
+                        new org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint("/login")
+                                .commence(request, response, exception);
+                    }
+                }))
                 .formLogin(form -> form.loginPage("/login").authenticationDetailsSource(detailsSource)
                 .successHandler((request, response, auth) -> {
                     User user = users.findByUsername(auth.getName()).orElseThrow();

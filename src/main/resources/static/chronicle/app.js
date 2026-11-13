@@ -5,15 +5,68 @@ const slider = get("slider");
 const entries = get("entries");
 const fields = get("fields");
 const backgrounds = [...document.querySelectorAll(".backdrop")];
-const assetBase = new URL(document.querySelector(".chronicle-page").dataset.assetBase, location.href);
+const page = document.querySelector(".chronicle-page");
+const assetBase = new URL(page.dataset.assetBase, location.href);
+const apiUrl = new URL(page.dataset.apiUrl, location.href);
 const defaultBackground = "assets/sky.png";
 const storageKey = "aola-chronicle-nodes-v1";
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-let records = nodes;
+let records = [];
+let version = null;
+let latestSnapshot = null;
+let saving = false;
+let legacy = null;
 try {
-  const saved = JSON.parse(localStorage.getItem(storageKey));
-  if (Array.isArray(saved) && saved.every(node => node && typeof node.title === "string")) records = saved;
-} catch {}
+  const raw = localStorage.getItem(storageKey);
+  if (raw !== null) {
+    get("legacy-notice").hidden = false;
+    legacy = JSON.parse(raw);
+    if (Array.isArray(legacy) && legacy.every(node => node && typeof node === "object" && typeof node.title === "string")) {
+      get("import-legacy").hidden = false;
+    } else {
+      get("legacy-notice").textContent = "检测到旧本地数据，但格式无法识别；原数据未被修改。";
+    }
+  }
+} catch {
+  get("legacy-notice").hidden = false;
+  get("legacy-notice").textContent = "无法读取或解析旧本地数据；原数据未被修改。";
+}
+function safeBackground(value) {
+  if (!value) return true;
+  if (/^assets\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\.[A-Za-z0-9]+(?:#hue=-?[0-9]{1,3})?$/.test(value)) return true;
+  if (/[\\"'\x00-\x1f\x7f-\x9f]/.test(value)) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !!url.hostname && !url.username && !url.password;
+  } catch { return false; }
+}
+async function readSnapshot() {
+  const response = await fetch(apiUrl, { credentials: "same-origin", cache: "no-store", redirect: "error" });
+  if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "登录已失效或无权访问，请重新登录。" : `服务器返回 ${response.status}。`);
+  const snapshot = await response.json();
+  if (!Number.isSafeInteger(snapshot.version) || snapshot.version < 0 || !Array.isArray(snapshot.nodes) ||
+      !snapshot.nodes.every(node => node && ["year", "title", "yabi", "description", "background"].every(key => typeof node[key] === "string"))) {
+    throw new Error("服务器返回的数据格式无效。");
+  }
+  return snapshot;
+}
+async function loadShared() {
+  get("retry-load").hidden = true;
+  get("open-editor").disabled = true;
+  get("load-status").textContent = "正在加载共享编年史…";
+  try {
+    const snapshot = await readSnapshot();
+    records = snapshot.nodes;
+    version = snapshot.version;
+    render(0);
+    get("load-status").textContent = "";
+    get("open-editor").disabled = false;
+  } catch (error) {
+    get("load-status").textContent = `加载共享编年史失败：${error.message} 请重试。`;
+    get("retry-load").hidden = false;
+  }
+}
+get("retry-load").onclick = loadShared;
 let selected = -1;
 let positions = [];
 let pointer = null;
@@ -49,7 +102,7 @@ function changeBackground(node) {
   };
   try {
     const url = new URL(requested, assetBase);
-    image.src = ["http:", "https:"].includes(url.protocol) ? url.href : new URL(defaultBackground, assetBase).href;
+    image.src = safeBackground(requested) ? url.href : new URL(defaultBackground, assetBase).href;
   } catch {
     image.src = new URL(defaultBackground, assetBase).href;
   }
@@ -203,12 +256,51 @@ get("open-editor").onclick = () => {
   fields.replaceChildren();
   records.forEach(addRow);
   get("error").textContent = "";
+  get("conflict-info").textContent = "";
+  get("refresh-version").hidden = get("adopt-version").hidden = get("server-preview").hidden = true;
+  latestSnapshot = null;
   get("chronicle").hidden = true;
   get("editor").hidden = false;
   window.scrollTo(0, 0);
   get("cancel").focus({preventScroll:true});
 };
-get("cancel").onclick = () => leaveEditor(selected);
+get("cancel").onclick = () => {
+  if (confirm("返回时间轴将放弃编辑器中的未保存修改，确定返回吗？")) leaveEditor(selected);
+};
+get("import-legacy").onclick = () => {
+  if (!confirm("导入会替换当前编辑器内容，但不会修改旧本地数据或自动保存到服务器。继续吗？")) return;
+  fields.replaceChildren();
+  legacy.forEach(addRow);
+  get("error").textContent = "已导入旧本地节点，请检查内容并手动保存。";
+};
+get("refresh-version").onclick = async () => {
+  saving = true;
+  get("refresh-version").disabled = get("save").disabled = get("cancel").disabled = true;
+  latestSnapshot = null;
+  get("adopt-version").hidden = get("server-preview").hidden = true;
+  try {
+    latestSnapshot = await readSnapshot();
+    get("conflict-info").textContent = `服务器当前版本为 ${latestSnapshot.version}。请先查看以下服务器内容；选择保留草稿后，下一次保存将用草稿替换这些内容，并再次检查版本。`;
+    get("server-preview").textContent = JSON.stringify(latestSnapshot.nodes, null, 2);
+    get("server-preview").hidden = false;
+    get("adopt-version").hidden = false;
+  } catch (error) {
+    get("conflict-info").textContent = `获取最新版本失败：${error.message} 草稿仍在编辑器中。`;
+  } finally {
+    saving = false;
+    get("refresh-version").disabled = get("save").disabled = get("cancel").disabled = false;
+  }
+};
+get("adopt-version").onclick = () => {
+  if (!latestSnapshot || !confirm("确定使用当前草稿替换刚查看的服务器内容？需要再次点击保存，服务器仍会检查版本。")) return;
+  version = latestSnapshot.version;
+  latestSnapshot = null;
+  get("refresh-version").hidden = true;
+  get("adopt-version").hidden = true;
+  get("server-preview").hidden = true;
+  get("conflict-info").textContent = "已选择以最新版本为基础，草稿尚未保存。";
+  get("error").textContent = "";
+};
 get("add").onclick = () => addRow().querySelector("input").focus();
 fields.addEventListener("click", event => {
   const action = event.target.dataset.action;
@@ -219,8 +311,9 @@ fields.addEventListener("click", event => {
   if (action === "remove") row.remove();
   updateRows();
 });
-get("form").addEventListener("submit", event => {
+get("form").addEventListener("submit", async event => {
   event.preventDefault();
+  if (saving || version === null) return;
   const updated = [...fields.children].map(row => Object.fromEntries(
     [...row.querySelectorAll("[name]")].map(input => [input.name, input.value.trim()])
   ));
@@ -228,14 +321,45 @@ get("form").addEventListener("submit", event => {
     get("error").textContent = "请填写每个节点的年份和标题。";
     return;
   }
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(updated));
-  } catch {
-    get("error").textContent = "浏览器无法保存修改，请检查站点存储权限或可用空间。";
+  if (updated.length > 200 || updated.some(node => node.background.length > 2048 || !safeBackground(node.background))) {
+    get("error").textContent = "节点不能超过 200 个；背景地址须为空、安全的 assets/ 路径或不含凭据的 HTTPS 地址，且不超过 2048 字符。";
     return;
   }
-  const newIndex = updated.findIndex(node => !records.some(old => old.year === node.year && old.title === node.title));
-  records = updated;
-  leaveEditor(newIndex >= 0 ? newIndex : selected);
+  saving = true;
+  get("save").disabled = get("cancel").disabled = get("add").disabled = get("import-legacy").disabled = get("refresh-version").disabled = get("adopt-version").disabled = true;
+  fields.disabled = true;
+  const locked = [...fields.querySelectorAll("input, textarea, button")];
+  locked.forEach(control => control.disabled = true);
+  try {
+    const response = await fetch(apiUrl, {
+      method: "PUT", credentials: "same-origin", redirect: "error",
+      headers: { "Content-Type": "application/json", [page.dataset.csrfHeader]: page.dataset.csrfToken },
+      body: JSON.stringify({ version, nodes: updated })
+    });
+    if (response.status === 409) {
+      latestSnapshot = null;
+      get("refresh-version").hidden = false;
+      get("adopt-version").hidden = get("server-preview").hidden = true;
+      get("conflict-info").textContent = "";
+      throw new Error("服务器内容已被其他用户修改。草稿仍在编辑器中，请查看最新版本并决定如何处理。");
+    }
+    if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "登录已失效、无权保存或安全令牌已过期，请复制草稿后重新登录。" : `服务器返回 ${response.status}。`);
+    const snapshot = await response.json();
+    if (!Number.isSafeInteger(snapshot.version) || snapshot.version !== version + 1 || !Array.isArray(snapshot.nodes)) throw new Error("保存结果无法确认；请查看最新服务器版本后再决定如何处理。");
+    const newIndex = updated.findIndex(node => !records.some(old => old.year === node.year && old.title === node.title));
+    records = updated;
+    version = snapshot.version;
+    leaveEditor(newIndex >= 0 ? newIndex : selected);
+  } catch (error) {
+    get("refresh-version").hidden = false;
+    get("error").textContent = `保存未确认：${error.message} 草稿仍在编辑器中。可查看最新服务器版本。`;
+  } finally {
+    saving = false;
+    get("save").disabled = get("cancel").disabled = get("add").disabled = get("import-legacy").disabled = get("refresh-version").disabled = get("adopt-version").disabled = false;
+    fields.disabled = false;
+    locked.forEach(control => control.disabled = false);
+    updateRows();
+  }
 });
 render(0);
+loadShared();

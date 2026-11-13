@@ -15,4 +15,5 @@
 .chronicle-page .card:active{transform:translateX(-50%)}
 .chronicle-page .entry .card{max-width:none;box-shadow:none;border:0;border-radius:0}
 .chronicle-page input:not([type]),.chronicle-page textarea{min-height:0;margin:0;padding:8px;background:#080e24;color:#fff4de;border:1px solid #6c6386;border-radius:3px}
+.chronicle-page #server-preview{max-height:20rem;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#080e24;padding:1rem;border:1px solid #6c6386}
 
